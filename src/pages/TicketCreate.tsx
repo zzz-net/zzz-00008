@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, BookOpen, Lightbulb } from 'lucide-react';
 import { ticketApi } from '@/services/api';
 import { useToast } from '@/hooks/useToast';
 import { useAuthStore } from '@/store/useAuthStore';
-import { severityMap, type Severity } from '@/types';
+import { severityMap, type Severity, type UpgradePlan } from '@/types';
+import PlanReferenceModal from '@/components/PlanReferenceModal';
+import SeverityBadge from '@/components/SeverityBadge';
 
 interface FormData {
   customer_name: string;
@@ -31,11 +33,14 @@ export default function TicketCreate() {
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [appliedPlan, setAppliedPlan] = useState<UpgradePlan | null>(null);
   const navigate = useNavigate();
   const showToast = useToast((state) => state.showToast);
   const fetchUsers = useAuthStore((state) => state.fetchUsers);
   const users = useAuthStore((state) => state.users);
   const user = useAuthStore((state) => state.user);
+  const canReference = useAuthStore((state) => state.hasPermission('reference_plans'));
 
   useEffect(() => {
     fetchUsers();
@@ -59,6 +64,29 @@ export default function TicketCreate() {
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleApplyPlan = (plan: UpgradePlan) => {
+    setAppliedPlan(plan);
+    if (plan.applicable_severity && !formData.severity) {
+      setFormData((prev) => ({ ...prev, severity: plan.applicable_severity }));
+    }
+    if (plan.assignee_suggestion && !formData.assignee) {
+      const matchedUser = Object.entries(users).find(
+        ([, info]) => info.name === plan.assignee_suggestion || info.name.includes(plan.assignee_suggestion!)
+      );
+      if (matchedUser) {
+        setFormData((prev) => ({ ...prev, assignee: matchedUser[0] }));
+      }
+    }
+    if (plan.steps) {
+      const existingProgress = formData.progress ? formData.progress + '\n\n' : '';
+      setFormData((prev) => ({
+        ...prev,
+        progress: `${existingProgress}【套用预案：${plan.title}（v${plan.version}）】\n${plan.steps}`,
+      }));
+    }
+    showToast(`已套用预案「${plan.title}」`, 'success');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,6 +134,27 @@ export default function TicketCreate() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+        {canReference && (
+          <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-3">
+            <div className="flex items-center gap-2 text-sm text-blue-800">
+              <Lightbulb className="h-4 w-4" />
+              <span>可从预案库快速套用标准处理流程</span>
+              {appliedPlan && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded bg-white px-2 py-0.5 text-xs">
+                  已套用: {appliedPlan.title} <SeverityBadge severity={appliedPlan.applicable_severity} /> v{appliedPlan.version}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPlanModal(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2d4f7c]"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              {appliedPlan ? '更换预案' : '引用预案'}
+            </button>
+          </div>
+        )}
         <div className="grid gap-6 md:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-gray-700">
@@ -212,6 +261,16 @@ export default function TicketCreate() {
           </button>
         </div>
       </form>
+
+      <PlanReferenceModal
+        open={showPlanModal}
+        onClose={() => setShowPlanModal(false)}
+        customerName={formData.customer_name}
+        severity={formData.severity}
+        progress={formData.progress}
+        onApply={handleApplyPlan}
+        mode="create"
+      />
     </div>
   );
 }

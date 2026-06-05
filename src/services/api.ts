@@ -1,7 +1,8 @@
 import axios from 'axios';
 import type {
   Ticket, HandoverBatch, StatusHistory, UserInfo, RoleInfo,
-  DashboardStats, TicketListResponse, ApiResponse, DutyShift, DutyReminder
+  DashboardStats, TicketListResponse, ApiResponse, DutyShift, DutyReminder,
+  UpgradePlan, PlanReferenceResult
 } from '../types';
 
 const api = axios.create({
@@ -244,6 +245,71 @@ export const reminderApi = {
     formData.append('file', file);
     return api.post<ApiResponse<{ imported: number; skipped: string[]; total: number }>>(
       '/reminders/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } }
+    ).then(r => r.data);
+  },
+};
+
+export const planApi = {
+  getList: (params?: {
+    severity?: string;
+    is_active?: boolean;
+    keyword?: string;
+    customer_name?: string;
+    title?: string;
+    only_latest?: boolean;
+  }) => api.get<ApiResponse<UpgradePlan[]>>('/plans', { params }).then(r => r.data),
+
+  getMatch: (params?: { customer_name?: string; severity?: string; progress?: string }) =>
+    api.get<ApiResponse<UpgradePlan[]>>('/plans/match', { params }).then(r => r.data),
+
+  get: (id: number) =>
+    api.get<ApiResponse<UpgradePlan>>(`/plans/${id}`).then(r => r.data),
+
+  getVersions: (planGroupId: string) =>
+    api.get<ApiResponse<UpgradePlan[]>>(`/plans/group/${planGroupId}/versions`).then(r => r.data),
+
+  create: (data: {
+    title: string;
+    applicable_severity: string;
+    keywords: string[];
+    steps: string;
+    assignee_suggestion?: string;
+    is_active?: boolean;
+  }) => api.post<ApiResponse<UpgradePlan>>('/plans', data).then(r => r.data),
+
+  update: (id: number, data: {
+    title?: string;
+    applicable_severity?: string;
+    keywords?: string[];
+    steps?: string;
+    assignee_suggestion?: string;
+    is_active?: boolean;
+  }) => api.put<ApiResponse<UpgradePlan>>(`/plans/${id}`, data).then(r => r.data),
+
+  disable: (id: number) =>
+    api.post<ApiResponse<UpgradePlan>>(`/plans/${id}/disable`).then(r => r.data),
+
+  enable: (id: number) =>
+    api.post<ApiResponse<UpgradePlan>>(`/plans/${id}/enable`).then(r => r.data),
+
+  reference: (planId: number, ticketId: number) =>
+    api.post<ApiResponse<PlanReferenceResult>>(`/plans/${planId}/reference/${ticketId}`).then(r => r.data),
+
+  exportCsv: (params?: { severity?: string; is_active?: boolean }) => {
+    const url = new URL('/api/plans/export', window.location.origin);
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined) url.searchParams.append(k, String(v));
+      });
+    }
+    window.open(url.toString(), '_blank');
+  },
+
+  importCsv: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<ApiResponse<{ imported: number; skipped: string[]; total: number; details?: string[] }>>(
+      '/plans/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } }
     ).then(r => r.data);
   },
 };

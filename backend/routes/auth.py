@@ -6,19 +6,20 @@ ROLES = [
     {
         'role': 'cs',
         'name': '普通客服',
-        'permissions': ['view_tickets', 'create_tickets', 'update_progress', 'export_data', 'view_shifts', 'view_reminders', 'confirm_reminders']
+        'permissions': ['view_tickets', 'create_tickets', 'update_progress', 'export_data', 'view_shifts', 'view_reminders', 'confirm_reminders', 'view_plans', 'reference_plans']
     },
     {
         'role': 'handover',
         'name': '交班人',
-        'permissions': ['view_tickets', 'create_batches', 'view_batches', 'export_data', 'view_shifts', 'view_reminders', 'confirm_reminders']
+        'permissions': ['view_tickets', 'create_batches', 'view_batches', 'export_data', 'view_shifts', 'view_reminders', 'confirm_reminders', 'view_plans', 'reference_plans']
     },
     {
         'role': 'receiver',
         'name': '接班人',
         'permissions': [
             'view_tickets', 'confirm_batches', 'return_batches', 'view_batches', 'update_progress',
-            'export_data', 'view_shifts', 'manage_shifts', 'view_reminders', 'manage_reminders', 'confirm_reminders'
+            'export_data', 'view_shifts', 'manage_shifts', 'view_reminders', 'manage_reminders', 'confirm_reminders',
+            'view_plans', 'reference_plans', 'manage_plans'
         ]
     }
 ]

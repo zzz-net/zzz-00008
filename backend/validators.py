@@ -113,3 +113,37 @@ def validate_reminder_data(data: dict, for_update: bool = False) -> Tuple[bool, 
             return False, '关联班次 ID 格式不正确'
 
     return True, None
+
+
+def validate_plan_data(data: dict, for_update: bool = False) -> Tuple[bool, Optional[str]]:
+    if not for_update:
+        required_fields = ['title', 'applicable_severity', 'keywords', 'steps']
+        for field in required_fields:
+            if field not in data:
+                return False, f'缺少必填字段: {field}'
+            if field == 'keywords':
+                if not isinstance(data[field], list) or len(data[field]) == 0:
+                    return False, '关键词必须是非空列表'
+            elif not str(data[field]).strip():
+                return False, f'缺少必填字段: {field}'
+
+    if 'title' in data and not str(data['title']).strip():
+        return False, '预案标题不能为空'
+
+    valid_severities = ['low', 'medium', 'high', 'critical']
+    if 'applicable_severity' in data and data['applicable_severity'] not in valid_severities:
+        return False, f'适用严重级别必须是: {", ".join(valid_severities)}'
+
+    if 'keywords' in data:
+        if not isinstance(data['keywords'], list):
+            return False, '关键词必须是列表'
+        if len(data['keywords']) == 0:
+            return False, '至少需要一个关键词'
+        for kw in data['keywords']:
+            if not isinstance(kw, str) or not kw.strip():
+                return False, '关键词不能包含空字符串'
+
+    if 'steps' in data and not str(data['steps']).strip():
+        return False, '处理步骤不能为空'
+
+    return True, None

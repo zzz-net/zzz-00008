@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Ticket, Package, CalendarClock, Plus, ChevronDown, ChevronRight, BellRing } from 'lucide-react';
+import { LayoutDashboard, Ticket, Package, CalendarClock, Plus, ChevronDown, ChevronRight, BellRing, BookOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const menuItems = [
   { to: '/', label: '仪表盘', icon: LayoutDashboard },
   { to: '/tickets', label: '升级单', icon: Ticket },
   { to: '/batches', label: '交接批次', icon: Package },
+  { to: '/plans', label: '预案库', icon: BookOpen },
   { to: '/shifts', label: '值班排班', icon: CalendarClock },
   { to: '/reminders', label: '值班提醒', icon: BellRing },
 ];

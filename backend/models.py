@@ -201,3 +201,38 @@ class DutyReminderConfirmation(db.Model):
             'confirmed_by': self.confirmed_by,
             'confirmed_at': self.confirmed_at.isoformat() if self.confirmed_at else None
         }
+
+
+class UpgradePlan(db.Model):
+    __tablename__ = 'upgrade_plan'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    plan_group_id = db.Column(db.String(50), nullable=False, index=True)
+    title = db.Column(db.String(200), nullable=False)
+    applicable_severity = db.Column(db.String(20), nullable=False)
+    keywords = db.Column(db.Text, nullable=False, default='')
+    steps = db.Column(db.Text, nullable=False, default='')
+    assignee_suggestion = db.Column(db.String(200))
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    version = db.Column(db.Integer, nullable=False, default=1)
+    is_latest = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.String(100), nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'plan_group_id': self.plan_group_id,
+            'title': self.title,
+            'applicable_severity': self.applicable_severity,
+            'keywords': self.keywords.split(',') if self.keywords else [],
+            'steps': self.steps,
+            'assignee_suggestion': self.assignee_suggestion,
+            'is_active': self.is_active,
+            'version': self.version,
+            'is_latest': self.is_latest,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_by': self.created_by
+        }

@@ -2,7 +2,7 @@ export type Severity = 'low' | 'medium' | 'high' | 'critical';
 export type TicketStatus = 'open' | 'in_progress' | 'closed' | 'overdue';
 export type BatchStatus = 'pending' | 'confirmed' | 'returned';
 export type Role = 'cs' | 'handover' | 'receiver';
-export type EntityType = 'ticket' | 'batch' | 'shift' | 'reminder';
+export type EntityType = 'ticket' | 'batch' | 'shift' | 'reminder' | 'plan';
 
 export interface DutyShift {
   id: number;
@@ -154,4 +154,28 @@ export interface DutyReminder {
   updated_at: string;
   created_by: string;
   confirmations: ReminderConfirmation[];
+}
+
+export interface UpgradePlan {
+  id: number;
+  plan_group_id: string;
+  title: string;
+  applicable_severity: Severity;
+  keywords: string[];
+  steps: string;
+  assignee_suggestion: string | null;
+  is_active: boolean;
+  version: number;
+  is_latest: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  match_score?: number;
+  matched_keywords?: string[];
+}
+
+export interface PlanReferenceResult {
+  plan: UpgradePlan;
+  referenced_at: string;
+  operator: string;
 }

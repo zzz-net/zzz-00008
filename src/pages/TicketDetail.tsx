@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Save, XCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Save, XCircle, Clock, BookOpen } from 'lucide-react';
 import { ticketApi, historyApi } from '@/services/api';
 import { useToast } from '@/hooks/useToast';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -8,7 +8,8 @@ import StatusBadge from '@/components/StatusBadge';
 import SeverityBadge from '@/components/SeverityBadge';
 import { formatDateTime } from '@/utils/format';
 import { statusMap } from '@/types';
-import type { Ticket, StatusHistory, TicketStatus } from '@/types';
+import type { Ticket, StatusHistory, TicketStatus, UpgradePlan } from '@/types';
+import PlanReferenceModal from '@/components/PlanReferenceModal';
 
 export default function TicketDetail() {
   const { id } = useParams<{ id: string }>();
@@ -19,8 +20,10 @@ export default function TicketDetail() {
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState('');
   const [newStatus, setNewStatus] = useState<TicketStatus | ''>('');
+  const [showPlanModal, setShowPlanModal] = useState(false);
   const showToast = useToast((state) => state.showToast);
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canReference = useAuthStore((state) => state.hasPermission('reference_plans'));
   const user = useAuthStore((state) => state.user);
 
   const fetchTicket = async () => {
@@ -101,6 +104,14 @@ export default function TicketDetail() {
     }
   };
 
+  const handleApplyPlan = (plan: UpgradePlan) => {
+    if (plan.steps) {
+      const existingProgress = progress ? progress + '\n\n' : '';
+      setProgress(`${existingProgress}【引用预案：${plan.title}（v${plan.version}）】\n${plan.steps}`);
+    }
+    fetchTicket();
+  };
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -169,7 +180,19 @@ export default function TicketDetail() {
         </div>
 
         <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">编辑进展</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">编辑进展</h2>
+            {canReference && ticket && ticket.status !== 'closed' && (
+              <button
+                type="button"
+                onClick={() => setShowPlanModal(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-[#1e3a5f] bg-white px-3 py-1.5 text-xs font-medium text-[#1e3a5f] hover:bg-blue-50"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                引用预案
+              </button>
+            )}
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">进展描述</label>
             <textarea
@@ -253,6 +276,19 @@ export default function TicketDetail() {
           )}
         </div>
       </div>
+
+      {ticket && (
+        <PlanReferenceModal
+          open={showPlanModal}
+          onClose={() => setShowPlanModal(false)}
+          ticketId={ticket.id}
+          customerName={ticket.customer_name}
+          severity={ticket.severity}
+          progress={progress}
+          onApply={handleApplyPlan}
+          mode="detail"
+        />
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import BatchCreate from '@/pages/BatchCreate';
 import BatchDetail from '@/pages/BatchDetail';
 import ShiftList from '@/pages/ShiftList';
 import ReminderList from '@/pages/ReminderList';
+import PlanList from '@/pages/PlanList';
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="/batches/:id" element={<BatchDetail />} />
           <Route path="/shifts" element={<ShiftList />} />
           <Route path="/reminders" element={<ReminderList />} />
+          <Route path="/plans" element={<PlanList />} />
         </Route>
       </Routes>
     </Router>
