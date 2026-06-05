@@ -142,11 +142,14 @@ def get_open_tickets_for_handover():
     return [t.to_dict() for t in tickets]
 
 
-def is_ticket_in_pending_batch(ticket_id):
-    count = db.session.query(BatchTicket).join(
+def is_ticket_in_pending_batch(ticket_id, exclude_batch_id=None):
+    query = db.session.query(BatchTicket).join(
         HandoverBatch, HandoverBatch.id == BatchTicket.batch_id
     ).filter(
         BatchTicket.ticket_id == ticket_id,
         HandoverBatch.status == 'pending'
-    ).count()
+    )
+    if exclude_batch_id is not None:
+        query = query.filter(HandoverBatch.id != exclude_batch_id)
+    count = query.count()
     return count > 0

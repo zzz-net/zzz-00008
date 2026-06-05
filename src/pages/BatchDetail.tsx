@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { batchApi, historyApi } from '@/services/api';
+import { ArrowLeft, CheckCircle, XCircle, Clock, Edit2, Send, X, Save, CheckSquare, Square, AlertCircle } from 'lucide-react';
+import { batchApi, historyApi, ticketApi } from '@/services/api';
 import { useToast } from '@/hooks/useToast';
 import { useAuthStore } from '@/store/useAuthStore';
 import BatchStatusBadge from '@/components/BatchStatusBadge';
 import SeverityBadge from '@/components/SeverityBadge';
 import StatusBadge from '@/components/StatusBadge';
 import { formatDateTime } from '@/utils/format';
-import type { HandoverBatch, StatusHistory } from '@/types';
+import type { HandoverBatch, StatusHistory, Ticket } from '@/types';
+
+interface EditFormData {
+  name: string;
+  description: string;
+  ticketIds: number[];
+}
 
 export default function BatchDetail() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +25,11 @@ export default function BatchDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showReturnReason, setShowReturnReason] = useState(false);
   const [returnReason, setReturnReason] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<EditFormData>({ name: '', description: '', ticketIds: [] });
+  const [availableTickets, setAvailableTickets] = useState<Ticket[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [editErrors, setEditErrors] = useState<{ name?: string; ticketIds?: string }>({});
   const showToast = useToast((state) => state.showToast);
   const hasPermission = useAuthStore((state) => state.hasPermission);
   const user = useAuthStore((state) => state.user);
@@ -30,6 +41,11 @@ export default function BatchDetail() {
       const batchRes = await batchApi.get(Number(id));
       if (batchRes.success && batchRes.data) {
         setBatch(batchRes.data);
+        setEditForm({
+          name: batchRes.data.name,
+          description: batchRes.data.description || '',
+          ticketIds: batchRes.data.ticket_ids || [],
+        });
       }
 
       const historyRes = await historyApi.getList({
@@ -46,9 +62,35 @@ export default function BatchDetail() {
     }
   };
 
+  const fetchAvailableTickets = async () => {
+    try {
+      setTicketsLoading(true);
+      const res = await ticketApi.getOpenForHandover();
+      if (res.success && res.data) {
+        const currentTicketIds = batch?.ticket_ids || [];
+        const currentTickets = batch?.tickets || [];
+        const combinedTickets = [
+          ...currentTickets,
+          ...res.data.filter((t) => !currentTicketIds.includes(t.id)),
+        ];
+        setAvailableTickets(combinedTickets);
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '获取可交接工单失败', 'error');
+    } finally {
+      setTicketsLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchBatch();
   }, [id, showToast]);
+
+  useEffect(() => {
+    if (isEditing) {
+      fetchAvailableTickets();
+    }
+  }, [isEditing, batch?.ticket_ids]);
 
   const handleConfirm = async () => {
     if (!id || !batch) return;
@@ -102,7 +144,112 @@ export default function BatchDetail() {
     }
   };
 
+  const canEdit = batch?.status === 'returned' && (
+    (user?.username === batch.handover_person) || hasPermission('create_batches')
+  );
+
   const canAction = batch?.status === 'pending' && (hasPermission('confirm_batches') || hasPermission('return_batches'));
+
+  const canResubmit = batch?.status === 'returned' && (
+    (user?.username === batch.handover_person) || hasPermission('create_batches')
+  );
+
+  const validateEditForm = (): boolean => {
+    const errors: { name?: string; ticketIds?: string } = {};
+    if (!editForm.name.trim()) {
+      errors.name = '请输入批次名称';
+    }
+    if (editForm.ticketIds.length === 0) {
+      errors.ticketIds = '请至少选择一个工单';
+    }
+    setEditErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleToggleTicket = (ticketId: number) => {
+    setEditForm((prev) => ({
+      ...prev,
+      ticketIds: prev.ticketIds.includes(ticketId)
+        ? prev.ticketIds.filter((tid) => tid !== ticketId)
+        : [...prev.ticketIds, ticketId],
+    }));
+  };
+
+  const handleSelectAll = () => {
+    if (editForm.ticketIds.length === availableTickets.length) {
+      setEditForm((prev) => ({ ...prev, ticketIds: [] }));
+    } else {
+      setEditForm((prev) => ({ ...prev, ticketIds: availableTickets.map((t) => t.id) }));
+    }
+  };
+
+  const handleEdit = () => {
+    if (!batch) return;
+    setEditForm({
+      name: batch.name,
+      description: batch.description || '',
+      ticketIds: batch.ticket_ids || [],
+    });
+    setEditErrors({});
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditErrors({});
+  };
+
+  const handleSave = async () => {
+    if (!id || !batch) return;
+    if (!validateEditForm()) {
+      showToast('请填写所有必填项', 'error');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const res = await batchApi.update(Number(id), {
+        name: editForm.name,
+        description: editForm.description || undefined,
+        ticket_ids: editForm.ticketIds,
+      });
+      if (res.success) {
+        showToast('批次信息已更新', 'success');
+        setIsEditing(false);
+        fetchBatch();
+      } else {
+        showToast(res.error || '更新失败', 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '更新失败', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResubmit = async () => {
+    if (!id || !batch) return;
+    if (!window.confirm('确定要重新提交该批次吗？重新提交后状态将变为待确认。')) return;
+
+    try {
+      setActionLoading(true);
+      const res = await batchApi.resubmit(Number(id));
+      if (res.success) {
+        showToast('批次已重新提交', 'success');
+        setIsEditing(false);
+        fetchBatch();
+      } else {
+        showToast(res.error || '重新提交失败', 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '重新提交失败', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const returnHistoryItem = history.find((h) => h.new_status === 'returned');
+  const selectedTickets = availableTickets.filter((t) => editForm.ticketIds.includes(t.id));
 
   if (loading) {
     return (
@@ -136,125 +283,312 @@ export default function BatchDetail() {
         <BatchStatusBadge status={batch.status} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">批次信息</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-500">批次名称</span>
-              <span className="font-medium text-gray-900">{batch.name}</span>
+      {returnHistoryItem && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-medium text-red-800">退回原因</h3>
+              <p className="mt-1 text-sm text-red-700">{returnHistoryItem.reason || '无'}</p>
+              <p className="mt-1 text-xs text-red-600">
+                退回人: {returnHistoryItem.operator} • {formatDateTime(returnHistoryItem.created_at)}
+              </p>
             </div>
-            {batch.description && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">描述</span>
-                <span className="font-medium text-gray-900">{batch.description}</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-gray-500">交班人</span>
-              <span className="font-medium text-gray-900">{batch.handover_person}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">接班人</span>
-              <span className="font-medium text-gray-900">
-                {batch.receiver_person || '-'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">工单数量</span>
-              <span className="font-medium text-gray-900">{batch.ticket_ids.length}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">创建时间</span>
-              <span className="font-medium text-gray-500">{formatDateTime(batch.created_at)}</span>
-            </div>
-            {batch.confirmed_at && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">确认时间</span>
-                <span className="font-medium text-gray-500">{formatDateTime(batch.confirmed_at)}</span>
-              </div>
-            )}
           </div>
+        </div>
+      )}
 
-          {canAction && (
-            <div className="pt-4 border-t border-gray-200 space-y-3">
-              <div className="flex gap-2">
-                <button
-                  onClick={handleConfirm}
-                  disabled={actionLoading}
-                  className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  确认交接
-                </button>
-                <button
-                  onClick={() => setShowReturnReason(!showReturnReason)}
-                  disabled={actionLoading}
-                  className="flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                >
-                  <XCircle className="h-4 w-4" />
-                  退回交接
-                </button>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {isEditing ? (
+          <div className="space-y-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+              <Edit2 className="h-5 w-5 text-[#1e3a5f]" />
+              编辑批次信息
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  批次名称 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className={`mt-1 block w-full rounded-lg border px-3 py-2 text-sm ${
+                    editErrors.name
+                      ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                      : 'border-gray-300 focus:border-[#1e3a5f] focus:ring-[#1e3a5f]'
+                  } focus:outline-none focus:ring-1`}
+                  placeholder="请输入批次名称"
+                />
+                {editErrors.name && (
+                  <p className="mt-1 text-sm text-red-500">{editErrors.name}</p>
+                )}
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">描述</label>
+                <input
+                  type="text"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
+                  placeholder="请输入描述（选填）"
+                />
+              </div>
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>交班人</span>
+                <span className="font-medium text-gray-900">{batch.handover_person}</span>
+              </div>
+            </div>
 
-              {showReturnReason && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    退回原因 <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    value={returnReason}
-                    onChange={(e) => setReturnReason(e.target.value)}
-                    rows={3}
-                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
-                    placeholder="请输入退回原因"
-                  />
-                  <button
-                    onClick={handleReturn}
-                    disabled={actionLoading || !returnReason.trim()}
-                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                  >
-                    {actionLoading ? '提交中...' : '提交退回'}
-                  </button>
+            <div className="flex gap-2 pt-4 border-t border-gray-200">
+              <button
+                onClick={handleSave}
+                disabled={actionLoading}
+                className="flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#2d4f7c] disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                {actionLoading ? '保存中...' : '保存修改'}
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                disabled={actionLoading}
+                className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+                取消
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">批次信息</h2>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-500">批次名称</span>
+                <span className="font-medium text-gray-900">{batch.name}</span>
+              </div>
+              {batch.description && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">描述</span>
+                  <span className="font-medium text-gray-900">{batch.description}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-gray-500">交班人</span>
+                <span className="font-medium text-gray-900">{batch.handover_person}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">接班人</span>
+                <span className="font-medium text-gray-900">
+                  {batch.receiver_person || '-'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">工单数量</span>
+                <span className="font-medium text-gray-900">{batch.ticket_ids.length}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">创建时间</span>
+                <span className="font-medium text-gray-500">{formatDateTime(batch.created_at)}</span>
+              </div>
+              {batch.confirmed_at && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">确认时间</span>
+                  <span className="font-medium text-gray-500">{formatDateTime(batch.confirmed_at)}</span>
                 </div>
               )}
             </div>
-          )}
-        </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">
-            工单列表 ({batch.tickets?.length || batch.ticket_ids.length})
-          </h2>
-          {!batch.tickets || batch.tickets.length === 0 ? (
-            <p className="text-center text-gray-500">暂无工单数据</p>
-          ) : (
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {batch.tickets.map((ticket) => (
-                <div
-                  key={ticket.id}
-                  className="rounded-lg border border-gray-200 p-4 hover:bg-gray-50 cursor-pointer"
-                  onClick={() => navigate(`/tickets/${ticket.id}`)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-[#1e3a5f]">#{ticket.id}</span>
-                      <span className="text-gray-900">{ticket.customer_name}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <SeverityBadge severity={ticket.severity} />
-                      <StatusBadge status={ticket.status} />
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-center gap-4 text-sm text-gray-500">
-                    <span>责任人: {ticket.assignee}</span>
-                    <span>截止: {formatDateTime(ticket.deadline)}</span>
-                  </div>
+            {canAction && (
+              <div className="pt-4 border-t border-gray-200 space-y-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleConfirm}
+                    disabled={actionLoading}
+                    className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    确认交接
+                  </button>
+                  <button
+                    onClick={() => setShowReturnReason(!showReturnReason)}
+                    disabled={actionLoading}
+                    className="flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    退回交接
+                  </button>
                 </div>
-              ))}
+
+                {showReturnReason && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      退回原因 <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={returnReason}
+                      onChange={(e) => setReturnReason(e.target.value)}
+                      rows={3}
+                      className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
+                      placeholder="请输入退回原因"
+                    />
+                    <button
+                      onClick={handleReturn}
+                      disabled={actionLoading || !returnReason.trim()}
+                      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {actionLoading ? '提交中...' : '提交退回'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {canEdit && !isEditing && (
+              <div className="pt-4 border-t border-gray-200 space-y-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleEdit}
+                    disabled={actionLoading}
+                    className="flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#2d4f7c] disabled:opacity-50"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                    编辑批次
+                  </button>
+                  <button
+                    onClick={handleResubmit}
+                    disabled={actionLoading}
+                    className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                  >
+                    <Send className="h-4 w-4" />
+                    重新提交
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500">
+                  编辑并调整说明和工单清单后，点击"重新提交"将批次状态改为待确认
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {isEditing ? (
+          <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">
+                选择工单 <span className="text-red-500">*</span>
+              </h2>
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                className="flex items-center gap-2 text-sm text-[#1e3a5f] hover:underline"
+              >
+                {editForm.ticketIds.length === availableTickets.length ? '取消全选' : '全选'}
+              </button>
             </div>
-          )}
-        </div>
+            {editErrors.ticketIds && (
+              <p className="text-sm text-red-500">{editErrors.ticketIds}</p>
+            )}
+
+            {ticketsLoading ? (
+              <div className="flex h-32 items-center justify-center">
+                <div className="text-gray-500">加载中...</div>
+              </div>
+            ) : availableTickets.length === 0 ? (
+              <div className="py-8 text-center text-gray-500">
+                暂无可交接的工单
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {availableTickets.map((ticket) => {
+                  const isSelected = editForm.ticketIds.includes(ticket.id);
+                  return (
+                    <div
+                      key={ticket.id}
+                      onClick={() => handleToggleTicket(ticket.id)}
+                      className={`flex items-center gap-4 rounded-lg border p-4 cursor-pointer transition-colors ${
+                        isSelected
+                          ? 'border-[#1e3a5f] bg-blue-50'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {isSelected ? (
+                        <CheckSquare className="h-5 w-5 text-[#1e3a5f] flex-shrink-0" />
+                      ) : (
+                        <Square className="h-5 w-5 text-gray-400 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-[#1e3a5f]">#{ticket.id}</span>
+                          <span className="text-gray-900 truncate">{ticket.customer_name}</span>
+                          <SeverityBadge severity={ticket.severity} />
+                          <StatusBadge status={ticket.status} />
+                        </div>
+                        <div className="mt-1 flex items-center gap-4 text-sm text-gray-500 flex-wrap">
+                          <span>责任人: {ticket.assignee}</span>
+                          <span>截止: {formatDateTime(ticket.deadline)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedTickets.length > 0 && (
+              <div className="pt-4 border-t border-gray-200">
+                <h3 className="mb-3 text-sm font-medium text-gray-900">
+                  已选择工单 ({selectedTickets.length})
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {selectedTickets.map((ticket) => (
+                    <span
+                      key={ticket.id}
+                      className="inline-flex items-center rounded-full bg-[#1e3a5f]/10 px-3 py-1 text-sm text-[#1e3a5f]"
+                    >
+                      #{ticket.id} - {ticket.customer_name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">
+              工单列表 ({batch.tickets?.length || batch.ticket_ids.length})
+            </h2>
+            {!batch.tickets || batch.tickets.length === 0 ? (
+              <p className="text-center text-gray-500">暂无工单数据</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {batch.tickets.map((ticket) => (
+                  <div
+                    key={ticket.id}
+                    className="rounded-lg border border-gray-200 p-4 hover:bg-gray-50 cursor-pointer"
+                    onClick={() => navigate(`/tickets/${ticket.id}`)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-[#1e3a5f]">#{ticket.id}</span>
+                        <span className="text-gray-900">{ticket.customer_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <SeverityBadge severity={ticket.severity} />
+                        <StatusBadge status={ticket.status} />
+                      </div>
+                    </div>
+                    <div className="mt-2 flex items-center gap-4 text-sm text-gray-500">
+                      <span>责任人: {ticket.assignee}</span>
+                      <span>截止: {formatDateTime(ticket.deadline)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
@@ -273,14 +607,14 @@ export default function BatchDetail() {
                   <div className="h-full w-0.5 bg-gray-200" />
                 </div>
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {item.old_status && (
                       <BatchStatusBadge status={item.old_status as 'pending' | 'confirmed' | 'returned'} />
                     )}
-                    <span className="text-gray-400">→</span>
+                    {item.old_status && <span className="text-gray-400">→</span>}
                     <BatchStatusBadge status={item.new_status as 'pending' | 'confirmed' | 'returned'} />
                   </div>
-                  <div className="mt-1 flex items-center gap-2 text-sm text-gray-500">
+                  <div className="mt-1 flex items-center gap-2 text-sm text-gray-500 flex-wrap">
                     <span>操作人: {item.operator}</span>
                     <span>•</span>
                     <span>{formatDateTime(item.created_at)}</span>

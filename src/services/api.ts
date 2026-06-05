@@ -69,11 +69,20 @@ export const batchApi = {
     handover_person: string;
   }) => api.post<ApiResponse<HandoverBatch>>('/batches', data).then(r => r.data),
 
+  update: (id: number, data: {
+    name?: string;
+    description?: string;
+    ticket_ids?: number[];
+  }) => api.put<ApiResponse<HandoverBatch>>(`/batches/${id}`, data).then(r => r.data),
+
   confirm: (id: number, data?: { receiver_person?: string }) =>
     api.post<ApiResponse<HandoverBatch>>(`/batches/${id}/confirm`, data).then(r => r.data),
 
   return: (id: number, data?: { receiver_person?: string; reason?: string }) =>
     api.post<ApiResponse<HandoverBatch>>(`/batches/${id}/return`, data).then(r => r.data),
+
+  resubmit: (id: number) =>
+    api.post<ApiResponse<HandoverBatch>>(`/batches/${id}/resubmit`).then(r => r.data),
 };
 
 export const historyApi = {

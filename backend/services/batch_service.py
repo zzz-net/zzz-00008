@@ -23,9 +23,15 @@ def get_batch_detail(batch_id):
     return result, None, 200
 
 
-def create_batch(data, operator):
-    ticket_ids = data['ticket_ids']
+def _check_edit_permission(batch, operator, role, permissions):
+    if operator == batch.handover_person:
+        return True
+    if 'create_batches' in permissions:
+        return True
+    return False
 
+
+def _validate_tickets_for_batch(ticket_ids, exclude_batch_id=None):
     invalid_tickets = []
     for tid in ticket_ids:
         ticket = Ticket.query.get(tid)
@@ -33,9 +39,15 @@ def create_batch(data, operator):
             invalid_tickets.append(f'工单 {tid} 不存在')
         elif ticket.status == 'closed':
             invalid_tickets.append(f'工单 {tid} 已关闭，不能加入交接')
-        elif is_ticket_in_pending_batch(tid):
+        elif is_ticket_in_pending_batch(tid, exclude_batch_id):
             invalid_tickets.append(f'工单 {tid} 已在另一个待确认的交接批次中')
+    return invalid_tickets
 
+
+def create_batch(data, operator):
+    ticket_ids = data['ticket_ids']
+
+    invalid_tickets = _validate_tickets_for_batch(ticket_ids)
     if invalid_tickets:
         return None, '；'.join(invalid_tickets), 400
 
@@ -59,6 +71,75 @@ def create_batch(data, operator):
     return batch.to_dict(), None, 201
 
 
+def update_batch(batch_id, data, operator, role, permissions):
+    batch = HandoverBatch.query.get(batch_id)
+    if not batch:
+        return None, '交接批次不存在', 404
+
+    if batch.status != 'returned':
+        return None, f'当前批次状态为 {batch.status}，只有已退回的批次可以修改', 400
+
+    if not _check_edit_permission(batch, operator, role, permissions):
+        return None, '权限不足：只有交班人或有创建交接权限的角色可以修改已退回批次', 403
+
+    if 'name' in data and data['name']:
+        batch.name = data['name']
+    if 'description' in data:
+        batch.description = data.get('description', '')
+
+    if 'ticket_ids' in data:
+        ticket_ids = data['ticket_ids']
+        if not isinstance(ticket_ids, list) or len(ticket_ids) == 0:
+            return None, 'ticket_ids 必须是非空列表', 400
+
+        invalid_tickets = _validate_tickets_for_batch(ticket_ids, exclude_batch_id=batch_id)
+        if invalid_tickets:
+            return None, '；'.join(invalid_tickets), 400
+
+        batch.tickets.clear()
+        for tid in ticket_ids:
+            ticket = Ticket.query.get(tid)
+            batch.tickets.append(ticket)
+
+    old_ticket_count = len(batch.tickets)
+    add_history('batch', batch_id, 'returned', 'returned', operator,
+                f'修改已退回批次信息，包含 {old_ticket_count} 个工单')
+    db.session.commit()
+
+    result = batch.to_dict()
+    result['tickets'] = [t.to_dict() for t in batch.tickets]
+    return result, None, 200
+
+
+def resubmit_batch(batch_id, operator, role, permissions):
+    batch = HandoverBatch.query.get(batch_id)
+    if not batch:
+        return None, '交接批次不存在', 404
+
+    if batch.status != 'returned':
+        return None, f'当前批次状态为 {batch.status}，只有已退回的批次可以重新提交', 400
+
+    if not _check_edit_permission(batch, operator, role, permissions):
+        return None, '权限不足：只有交班人或有创建交接权限的角色可以重新提交已退回批次', 403
+
+    ticket_ids = [t.id for t in batch.tickets]
+    invalid_tickets = _validate_tickets_for_batch(ticket_ids, exclude_batch_id=batch_id)
+    if invalid_tickets:
+        return None, '；'.join(invalid_tickets), 400
+
+    old_status = batch.status
+    batch.status = 'pending'
+    batch.receiver_person = None
+
+    add_history('batch', batch_id, old_status, 'pending', operator,
+                f'重新提交已退回的交接批次，包含 {len(ticket_ids)} 个工单')
+    db.session.commit()
+
+    result = batch.to_dict()
+    result['tickets'] = [t.to_dict() for t in batch.tickets]
+    return result, None, 200
+
+
 def confirm_batch(batch_id, receiver_person, role):
     if role != 'receiver':
         return None, '权限不足：只有接班人角色可以确认交接批次', 403
@@ -69,9 +150,6 @@ def confirm_batch(batch_id, receiver_person, role):
 
     if batch.status == 'confirmed':
         return None, '该交接批次已经确认过，不能重复确认', 400
-
-    if batch.status == 'returned':
-        return None, '该交接批次已被退回，需要重新创建交接', 400
 
     if batch.status != 'pending':
         return None, f'当前批次状态为 {batch.status}，无法确认', 400
