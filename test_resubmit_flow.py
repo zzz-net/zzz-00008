@@ -6,11 +6,13 @@
 3. 冲突测试 - 工单已关闭/已被其他批次占用 - 应失败
 4. 完整流程 - 编辑退回批次 -> 重新提交 -> 状态回到 pending -> 确认
 5. 重启数据持久化 - 重启后批次状态、工单关系、历史记录仍正确
+6. 资源释放测试 - 连续运行两次无文件锁问题
 """
 import sys
 import os
 import json
 import time
+import gc
 
 if sys.platform == 'win32':
     try:
@@ -27,19 +29,65 @@ ERROR = '[ERROR]'
 DB_PATH = os.path.join('backend', 'data.db')
 
 
-def cleanup_database():
-    """清理数据库文件"""
+def dispose_app_connections(app):
+    """
+    释放 Flask 应用的 SQLAlchemy 数据库连接，包括 session 和 engine
+    这是解决 SQLite 文件锁问题的关键
+    """
+    try:
+        sys.path.insert(0, '.')
+        from backend.models import db
+
+        with app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+            db.session.remove()
+
+        print(f"{INFO} 已释放应用 {id(app)} 的数据库连接")
+        return True
+    except Exception as e:
+        print(f"{ERROR} 释放应用 {id(app)} 连接失败: {e}")
+        return False
+
+
+def cleanup_database(skip_lock_check=False):
+    """
+    清理数据库文件
+    skip_lock_check: 如果为 True，仅在文件存在且可删除时删除，不报错
+    """
     if os.path.exists(DB_PATH):
         try:
             os.remove(DB_PATH)
             print(f"{INFO} 已删除旧数据库文件")
+            return True
         except PermissionError as e:
-            print(f"\n{ERROR} 数据库文件被占用，无法删除: {DB_PATH}")
-            print(f"{ERROR} 请先关闭正在运行的后端服务 (run_backend.py)，然后重试")
-            sys.exit(2)
+            if not skip_lock_check:
+                print(f"\n{ERROR} 数据库文件被占用，无法删除: {DB_PATH}")
+                print(f"{ERROR} 请检查:")
+                print(f"{ERROR}   1. 是否有其他 Python 进程正在运行 (run_backend.py)")
+                print(f"{ERROR}   2. 是否有数据库连接未释放")
+                print(f"{ERROR}   3. 是否有数据库管理工具打开了该文件")
+                try:
+                    import psutil
+                    for proc in psutil.process_iter(['pid', 'name']):
+                        try:
+                            if 'python' in proc.info['name'].lower():
+                                for f in proc.open_files():
+                                    if DB_PATH in f.path:
+                                        print(f"{ERROR}   进程锁定: PID={proc.info['pid']}, 名称={proc.info['name']}")
+                        except (psutil.NoSuchProcess, psutil.AccessDenied):
+                            pass
+                except ImportError:
+                    pass
+                sys.exit(2)
+            return False
         except Exception as e:
-            print(f"\n{ERROR} 删除数据库文件失败: {DB_PATH}")
-            sys.exit(2)
+            if not skip_lock_check:
+                print(f"\n{ERROR} 删除数据库文件失败: {DB_PATH}")
+                print(f"{ERROR} 错误详情: {e}")
+                sys.exit(2)
+            return False
+    return True
 
 
 def create_test_env():
@@ -429,9 +477,9 @@ def run_tests():
               f"批次 {batch_id3}={state_before['batch3']['status']}, "
               f"历史记录数={state_before['history_count']}")
 
+        dispose_app_connections(app)
         del app
         del client
-        import gc
         gc.collect()
 
         print(f"  模拟服务重启，重新创建应用...")
@@ -499,10 +547,22 @@ def run_tests():
               "导出数据重启后仍正确",
               "导出数据不正确")
 
+        dispose_app_connections(app2)
+        del app2
+        del client2
+        gc.collect()
+
     except Exception as e:
         print(f"\n{ERROR} 测试执行过程中发生异常: {e}")
         import traceback
         traceback.print_exc()
+        try:
+            if 'app' in locals():
+                dispose_app_connections(app)
+            if 'app2' in locals():
+                dispose_app_connections(app2)
+        except:
+            pass
         sys.exit(4)
 
     print("\n" + "=" * 70)
@@ -521,15 +581,47 @@ if __name__ == '__main__':
     print(f"{INFO} 正在清理测试环境...")
     cleanup_database()
 
+    overall_success = True
+
     try:
-        success = run_tests()
-        cleanup_database()
-        sys.exit(0 if success else 1)
+        run_count = 2 if '--once' not in sys.argv else 1
+        for run_num in range(1, run_count + 1):
+            if run_count > 1:
+                print("\n" + "=" * 70)
+                print(f"第 {run_num}/{run_count} 轮运行 - 资源释放与可重复运行验证")
+                print("=" * 70)
+
+            print(f"{INFO} 第 {run_num} 轮: 开始测试...")
+            success = run_tests()
+            overall_success = overall_success and success
+
+            if not success:
+                print(f"\n{ERROR} 第 {run_num} 轮测试失败，停止后续运行")
+                cleanup_database()
+                sys.exit(1)
+
+            print(f"{INFO} 第 {run_num} 轮: 清理数据库...")
+            cleanup_database()
+
+        if run_count > 1:
+            print("\n" + "=" * 70)
+            print(f"{PASS} 可重复运行验证通过：连续 {run_count} 轮运行无文件锁问题")
+            print("=" * 70)
+
+        sys.exit(0 if overall_success else 1)
     except KeyboardInterrupt:
         print(f"\n{INFO} 测试被用户中断")
+        try:
+            cleanup_database(skip_lock_check=True)
+        except:
+            pass
         sys.exit(130)
     except Exception as e:
         print(f"\n{ERROR} 测试运行失败: {e}")
         import traceback
         traceback.print_exc()
+        try:
+            cleanup_database(skip_lock_check=True)
+        except:
+            pass
         sys.exit(99)
