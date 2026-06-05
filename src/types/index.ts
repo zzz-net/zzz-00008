@@ -2,7 +2,20 @@ export type Severity = 'low' | 'medium' | 'high' | 'critical';
 export type TicketStatus = 'open' | 'in_progress' | 'closed' | 'overdue';
 export type BatchStatus = 'pending' | 'confirmed' | 'returned';
 export type Role = 'cs' | 'handover' | 'receiver';
-export type EntityType = 'ticket' | 'batch';
+export type EntityType = 'ticket' | 'batch' | 'shift';
+
+export interface DutyShift {
+  id: number;
+  name: string;
+  duty_person: string;
+  start_time: string;
+  end_time: string;
+  allowed_severities: Severity[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
 
 export interface Ticket {
   id: number;
@@ -25,6 +38,9 @@ export interface HandoverBatch {
   handover_person: string;
   receiver_person: string | null;
   original_confirmer: string | null;
+  shift_id: number | null;
+  shift_name: string | null;
+  shift_duty_person: string | null;
   created_at: string;
   confirmed_at: string | null;
   revoked_at: string | null;

@@ -134,6 +134,7 @@ export default function BatchList() {
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">状态</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">已撤销</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">交班人</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">关联班次</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">接班人</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">原确认人</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">工单数量</th>
@@ -144,7 +145,7 @@ export default function BatchList() {
             <tbody className="divide-y divide-gray-200 bg-white">
               {batches.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={11} className="px-4 py-12 text-center text-gray-500">
                     暂无批次数据
                   </td>
                 </tr>
@@ -168,6 +169,11 @@ export default function BatchList() {
                         )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">{batch.handover_person}</td>
+                      <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
+                        {batch.shift_name ? (
+                          <span className="text-[#1e3a5f]">{batch.shift_name}</span>
+                        ) : '-'}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
                         {batch.receiver_person || '-'}
                       </td>

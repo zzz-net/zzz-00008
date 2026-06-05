@@ -6,17 +6,17 @@ ROLES = [
     {
         'role': 'cs',
         'name': '普通客服',
-        'permissions': ['view_tickets', 'create_tickets', 'update_progress', 'export_data']
+        'permissions': ['view_tickets', 'create_tickets', 'update_progress', 'export_data', 'view_shifts']
     },
     {
         'role': 'handover',
         'name': '交班人',
-        'permissions': ['view_tickets', 'create_batches', 'view_batches', 'export_data']
+        'permissions': ['view_tickets', 'create_batches', 'view_batches', 'export_data', 'view_shifts']
     },
     {
         'role': 'receiver',
         'name': '接班人',
-        'permissions': ['view_tickets', 'confirm_batches', 'return_batches', 'view_batches', 'update_progress', 'export_data']
+        'permissions': ['view_tickets', 'confirm_batches', 'return_batches', 'view_batches', 'update_progress', 'export_data', 'view_shifts', 'manage_shifts']
     }
 ]
 

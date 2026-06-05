@@ -35,5 +35,6 @@ export function isOverdue(deadline: string): boolean {
 export function getEntityLabel(entityType: string, entityId: number): string {
   if (entityType === 'ticket') return `升级单 #${entityId}`;
   if (entityType === 'batch') return `交接批次 #${entityId}`;
+  if (entityType === 'shift') return `排班班次 #${entityId}`;
   return `${entityType} #${entityId}`;
 }

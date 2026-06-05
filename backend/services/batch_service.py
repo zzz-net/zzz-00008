@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import and_
-from ..models import db, HandoverBatch, Ticket, BatchTicket
+from ..models import db, HandoverBatch, Ticket, BatchTicket, DutyShift
 from .history_service import add_history
 from .ticket_service import is_ticket_in_pending_batch, get_batch_using_ticket
 
@@ -56,11 +56,21 @@ def create_batch(data, operator):
     if invalid_tickets:
         return None, '；'.join(invalid_tickets), 400
 
+    shift_id = data.get('shift_id')
+    shift = None
+    if shift_id:
+        shift = DutyShift.query.get(shift_id)
+        if not shift:
+            return None, '指定的班次不存在', 404
+        if not shift.is_active:
+            return None, f'班次「{shift.name}」已停用，不能用于交接', 400
+
     batch = HandoverBatch(
         name=data['name'],
         description=data.get('description', ''),
         handover_person=data['handover_person'],
-        status='pending'
+        status='pending',
+        shift_id=shift_id
     )
 
     for tid in ticket_ids:
@@ -70,7 +80,9 @@ def create_batch(data, operator):
     db.session.add(batch)
     db.session.flush()
 
-    add_history('batch', batch.id, None, 'pending', operator, f'创建交接批次，包含 {len(ticket_ids)} 个工单')
+    shift_msg = f'，关联班次: {shift.name}' if shift else ''
+    add_history('batch', batch.id, None, 'pending', operator,
+                f'创建交接批次，包含 {len(ticket_ids)} 个工单{shift_msg}')
     db.session.commit()
 
     return batch.to_dict(), None, 201
@@ -159,10 +171,17 @@ def confirm_batch(batch_id, receiver_person, role, current_user):
     if batch.status != 'pending':
         return None, f'当前批次状态为 {batch.status}，无法确认', 400
 
+    if batch.shift_id and batch.shift:
+        if receiver_person and receiver_person != batch.shift.duty_person:
+            return None, f'该批次关联班次「{batch.shift.name}」，接班人必须是值班人「{batch.shift.duty_person}」', 400
+
     old_status = batch.status
     batch.status = 'confirmed'
-    batch.receiver_person = receiver_person
-    batch.receiver_person_display = receiver_person
+    effective_receiver = receiver_person
+    if batch.shift_id and batch.shift and not effective_receiver:
+        effective_receiver = batch.shift.duty_person
+    batch.receiver_person = effective_receiver
+    batch.receiver_person_display = effective_receiver
     batch.original_confirmer = current_user
     batch.confirmed_at = datetime.utcnow()
 

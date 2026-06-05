@@ -8,6 +8,7 @@ import TicketDetail from '@/pages/TicketDetail';
 import BatchList from '@/pages/BatchList';
 import BatchCreate from '@/pages/BatchCreate';
 import BatchDetail from '@/pages/BatchDetail';
+import ShiftList from '@/pages/ShiftList';
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/batches" element={<BatchList />} />
           <Route path="/batches/create" element={<BatchCreate />} />
           <Route path="/batches/:id" element={<BatchDetail />} />
+          <Route path="/shifts" element={<ShiftList />} />
         </Route>
       </Routes>
     </Router>

@@ -487,6 +487,17 @@ export default function BatchDetail() {
                 <span className="text-gray-500">交班人</span>
                 <span className="font-medium text-gray-900">{batch.handover_person}</span>
               </div>
+              {batch.shift_name && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">关联班次</span>
+                  <span className="font-medium text-[#1e3a5f]">
+                    {batch.shift_name}
+                    {batch.shift_duty_person && (
+                    <span className="ml-2 text-sm text-gray-500">(值班人: {batch.shift_duty_person})</span>
+                  )}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-gray-500">接班人</span>
                 <span className="font-medium text-gray-900">

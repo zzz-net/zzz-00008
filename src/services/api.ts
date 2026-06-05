@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type {
   Ticket, HandoverBatch, StatusHistory, UserInfo, RoleInfo,
-  DashboardStats, TicketListResponse, ApiResponse
+  DashboardStats, TicketListResponse, ApiResponse, DutyShift
 } from '../types';
 
 const api = axios.create({
@@ -67,6 +67,7 @@ export const batchApi = {
     description?: string;
     ticket_ids: number[];
     handover_person: string;
+    shift_id?: number;
   }) => api.post<ApiResponse<HandoverBatch>>('/batches', data).then(r => r.data),
 
   update: (id: number, data: {
@@ -134,6 +135,56 @@ export const exportApi = {
       });
     }
     window.open(url.toString(), '_blank');
+  },
+
+  exportShifts: (params?: { format?: string; date?: string }) => {
+    const url = new URL('/api/shifts/export', window.location.origin);
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined) url.searchParams.append(k, String(v));
+      });
+    }
+    window.open(url.toString(), '_blank');
+  },
+};
+
+export const shiftApi = {
+  getList: (params?: { date?: string; is_active?: boolean }) =>
+    api.get<ApiResponse<DutyShift[]>>('/shifts', { params }).then(r => r.data),
+
+  getActive: () =>
+    api.get<ApiResponse<DutyShift[]>>('/shifts/active').then(r => r.data),
+
+  get: (id: number) =>
+    api.get<ApiResponse<DutyShift>>(`/shifts/${id}`).then(r => r.data),
+
+  create: (data: {
+    name: string;
+    duty_person: string;
+    start_time: string;
+    end_time: string;
+    allowed_severities?: string[];
+    is_active?: boolean;
+  }) => api.post<ApiResponse<DutyShift>>('/shifts', data).then(r => r.data),
+
+  update: (id: number, data: {
+    name?: string;
+    duty_person?: string;
+    start_time?: string;
+    end_time?: string;
+    allowed_severities?: string[];
+    is_active?: boolean;
+  }) => api.put<ApiResponse<DutyShift>>(`/shifts/${id}`, data).then(r => r.data),
+
+  disable: (id: number) =>
+    api.post<ApiResponse<DutyShift>>(`/shifts/${id}/disable`).then(r => r.data),
+
+  importCsv: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<ApiResponse<{ imported: number; skipped: string[]; total: number }>>(
+      '/shifts/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } }
+    ).then(r => r.data);
   },
 };
 

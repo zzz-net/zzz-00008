@@ -4,6 +4,35 @@ from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 
 
+class DutyShift(db.Model):
+    __tablename__ = 'duty_shift'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(200), nullable=False)
+    duty_person = db.Column(db.String(100), nullable=False)
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=False)
+    allowed_severities = db.Column(db.String(200), nullable=False, default='low,medium,high,critical')
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.String(100), nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'duty_person': self.duty_person,
+            'start_time': self.start_time.isoformat() if self.start_time else None,
+            'end_time': self.end_time.isoformat() if self.end_time else None,
+            'allowed_severities': self.allowed_severities.split(',') if self.allowed_severities else [],
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_by': self.created_by
+        }
+
+
 class Ticket(db.Model):
     __tablename__ = 'ticket'
 
@@ -44,6 +73,7 @@ class HandoverBatch(db.Model):
     receiver_person = db.Column(db.String(100))
     receiver_person_display = db.Column(db.String(100))
     original_confirmer = db.Column(db.String(100))
+    shift_id = db.Column(db.Integer, db.ForeignKey('duty_shift.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     confirmed_at = db.Column(db.DateTime)
     revoked_at = db.Column(db.DateTime)
@@ -52,6 +82,7 @@ class HandoverBatch(db.Model):
     revoke_old_status = db.Column(db.String(20))
     revoke_new_status = db.Column(db.String(20))
 
+    shift = db.relationship('DutyShift', backref=db.backref('batches', lazy='dynamic'))
     tickets = db.relationship('Ticket', secondary='batch_ticket',
                               backref=db.backref('batches', lazy='dynamic'))
 
@@ -65,6 +96,9 @@ class HandoverBatch(db.Model):
             'receiver_person': self.receiver_person,
             'receiver_person_display': self.receiver_person_display,
             'original_confirmer': self.original_confirmer,
+            'shift_id': self.shift_id,
+            'shift_name': self.shift.name if self.shift else None,
+            'shift_duty_person': self.shift.duty_person if self.shift else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'confirmed_at': self.confirmed_at.isoformat() if self.confirmed_at else None,
             'revoked_at': self.revoked_at.isoformat() if self.revoked_at else None,

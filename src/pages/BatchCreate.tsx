@@ -1,23 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, CheckSquare, Square } from 'lucide-react';
-import { batchApi, ticketApi } from '@/services/api';
+import { ArrowLeft, Save, CheckSquare, Square, CalendarClock } from 'lucide-react';
+import { batchApi, ticketApi, shiftApi } from '@/services/api';
 import { useToast } from '@/hooks/useToast';
 import { useAuthStore } from '@/store/useAuthStore';
 import SeverityBadge from '@/components/SeverityBadge';
 import StatusBadge from '@/components/StatusBadge';
 import { formatDateTime } from '@/utils/format';
-import type { Ticket } from '@/types';
+import type { Ticket, DutyShift } from '@/types';
 
 interface FormData {
   name: string;
   description: string;
   ticketIds: number[];
+  shiftId: number | null;
 }
 
 interface FormErrors {
   name?: string;
   ticketIds?: string;
+  shiftId?: string;
 }
 
 export default function BatchCreate() {
@@ -25,10 +27,13 @@ export default function BatchCreate() {
     name: '',
     description: '',
     ticketIds: [],
+    shiftId: null,
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [shifts, setShifts] = useState<DutyShift[]>([]);
   const [loading, setLoading] = useState(true);
+  const [shiftsLoading, setShiftsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
   const showToast = useToast((state) => state.showToast);
@@ -50,6 +55,25 @@ export default function BatchCreate() {
     };
     fetchOpenTickets();
   }, [showToast]);
+
+  useEffect(() => {
+    const fetchShifts = async () => {
+      try {
+        setShiftsLoading(true);
+        const res = await shiftApi.getActive();
+        if (res.success && res.data) {
+          setShifts(res.data);
+        }
+      } catch (e) {
+        console.error('获取班次失败:', e);
+      } finally {
+        setShiftsLoading(false);
+      }
+    };
+    fetchShifts();
+  }, []);
+
+  const selectedShift = shifts.find((s) => s.id === formData.shiftId);
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
@@ -97,6 +121,7 @@ export default function BatchCreate() {
         description: formData.description || undefined,
         ticket_ids: formData.ticketIds,
         handover_person: user?.username || '',
+        shift_id: formData.shiftId ?? undefined,
       });
 
       if (res.success) {
@@ -156,6 +181,52 @@ export default function BatchCreate() {
                 placeholder="请输入描述（选填）"
               />
             </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+            <CalendarClock className="h-5 w-5 text-[#1e3a5f]" />
+            关联值班班次
+            <span className="text-sm font-normal text-gray-500">（选填，关联后接班人只能为该班次值班人）</span>
+          </h2>
+          <div className="grid gap-6 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">选择班次</label>
+              {shiftsLoading ? (
+                <div className="mt-1 text-sm text-gray-500">加载中...</div>
+              ) : shifts.length === 0 ? (
+                <div className="mt-1 text-sm text-gray-500">当前无生效中的值班班次，可先前往「值班排班」创建</div>
+              ) : (
+                <select
+                  value={formData.shiftId ?? ''}
+                  onChange={(e) => setFormData({ ...formData, shiftId: e.target.value ? Number(e.target.value) : null })}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
+                >
+                  <option value="">-- 不关联班次 --</option>
+                  {shifts.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} | 值班人: {s.duty_person} | {formatDateTime(s.start_time)} ~ {formatDateTime(s.end_time)}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            {selectedShift && (
+              <div className="rounded-lg bg-blue-50 p-4 border border-blue-100">
+                <div className="text-sm font-medium text-[#1e3a5f] mb-1">{selectedShift.name}</div>
+                <div className="space-y-1 text-sm text-gray-600">
+                  <div>值班人: <span className="font-medium text-gray-900">{selectedShift.duty_person}</span></div>
+                  <div>时间: {formatDateTime(selectedShift.start_time)} ~ {formatDateTime(selectedShift.end_time)}</div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    可接收级别:
+                    {selectedShift.allowed_severities.map((sev) => (
+                      <SeverityBadge key={sev} severity={sev} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
