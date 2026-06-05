@@ -5,10 +5,15 @@ from .history_service import add_history
 from .ticket_service import is_ticket_in_pending_batch, get_batch_using_ticket
 
 
-def get_batches(status=None):
+def get_batches(status=None, is_revoked=None):
     query = HandoverBatch.query.order_by(HandoverBatch.created_at.desc())
     if status:
         query = query.filter(HandoverBatch.status == status)
+    if is_revoked is not None:
+        if is_revoked:
+            query = query.filter(HandoverBatch.revoked_at.isnot(None))
+        else:
+            query = query.filter(HandoverBatch.revoked_at.is_(None))
     batches = query.all()
     return [b.to_dict() for b in batches]
 
@@ -140,7 +145,7 @@ def resubmit_batch(batch_id, operator, role, permissions):
     return result, None, 200
 
 
-def confirm_batch(batch_id, receiver_person, role):
+def confirm_batch(batch_id, receiver_person, role, current_user):
     if role != 'receiver':
         return None, '权限不足：只有接班人角色可以确认交接批次', 403
 
@@ -157,9 +162,11 @@ def confirm_batch(batch_id, receiver_person, role):
     old_status = batch.status
     batch.status = 'confirmed'
     batch.receiver_person = receiver_person
+    batch.receiver_person_display = receiver_person
+    batch.original_confirmer = current_user
     batch.confirmed_at = datetime.utcnow()
 
-    add_history('batch', batch_id, old_status, 'confirmed', receiver_person, '确认接收交接')
+    add_history('batch', batch_id, old_status, 'confirmed', current_user, '确认接收交接')
     db.session.commit()
 
     result = batch.to_dict()
@@ -197,7 +204,7 @@ def return_batch(batch_id, receiver_person, reason, role):
     return result, None, 200
 
 
-def revoke_batch(batch_id, receiver_person, reason, role):
+def revoke_batch(batch_id, current_user, reason, role):
     if role != 'receiver':
         return None, '权限不足：只有接班人角色可以撤销已确认的交接批次', 403
 
@@ -214,8 +221,11 @@ def revoke_batch(batch_id, receiver_person, reason, role):
     if batch.status != 'confirmed':
         return None, f'当前批次状态为 {batch.status}，只有已确认的批次可以撤销', 400
 
-    if batch.receiver_person != receiver_person:
-        return None, '权限不足：只能撤销自己作为接班人确认的批次', 403
+    if not batch.original_confirmer:
+        return None, '该批次缺少原确认人记录，无法撤销', 400
+
+    if batch.original_confirmer != current_user:
+        return None, f'权限不足：该批次由「{batch.original_confirmer}」确认，只有原确认人可以撤销', 403
 
     ticket_ids = [t.id for t in batch.tickets]
     occupied_tickets = []
@@ -230,17 +240,22 @@ def revoke_batch(batch_id, receiver_person, reason, role):
         return None, '；'.join(occupied_tickets), 409
 
     old_status = batch.status
-    batch.status = 'pending'
+    new_status = 'pending'
+
+    batch.status = new_status
     batch.receiver_person = None
     batch.confirmed_at = None
     batch.revoked_at = datetime.utcnow()
-    batch.revoked_by = receiver_person
+    batch.revoked_by = current_user
     batch.revoke_reason = reason
+    batch.revoke_old_status = old_status
+    batch.revoke_new_status = new_status
 
-    add_history('batch', batch_id, old_status, 'pending', receiver_person,
+    add_history('batch', batch_id, old_status, new_status, current_user,
                 f'撤销已确认的交接批次，原因：{reason or "未填写"}')
     db.session.commit()
 
     result = batch.to_dict()
     result['tickets'] = [t.to_dict() for t in batch.tickets]
+    result['affected_tickets'] = [t.to_dict() for t in batch.tickets]
     return result, None, 200

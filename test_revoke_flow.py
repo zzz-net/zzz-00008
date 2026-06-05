@@ -132,17 +132,15 @@ def run_tests():
         print("\n1.4 非确认者的接班人尝试撤销")
         client.post('/api/switch-role', json={'role': 'receiver', 'username': 'other_receiver'})
         resp = client.post(f'/api/batches/{batch_id}/revoke', json={
-            'receiver_person': 'other_receiver',
             'reason': '测试撤销'
         })
-        check(resp.status_code == 403 and '只能撤销自己作为接班人确认的批次' in resp.get_json().get('error', ''),
+        check(resp.status_code == 403 and '只有原确认人可以撤销' in resp.get_json().get('error', ''),
               "非确认者撤销正确返回 403",
               f"非确认者撤销权限校验失败: {resp.status_code}")
 
         print("\n1.5 缺少撤销原因")
         client.post('/api/switch-role', json={'role': 'receiver', 'username': 'receiver_demo'})
         resp = client.post(f'/api/batches/{batch_id}/revoke', json={
-            'receiver_person': '接班小张',
             'reason': ''
         })
         check(resp.status_code == 400 and '请填写撤销原因' in resp.get_json().get('error', ''),
@@ -154,22 +152,24 @@ def run_tests():
         print("\n2.1 撤销成功 - 已确认批次")
         client.post('/api/switch-role', json={'role': 'receiver', 'username': 'receiver_demo'})
         resp = client.post(f'/api/batches/{batch_id}/revoke', json={
-            'receiver_person': '接班小张',
             'reason': '发现交接错误，需要重新核对'
         })
         data = resp.get_json()
         check(resp.status_code == 200 and data.get('success') and data['data']['status'] == 'pending',
               "已确认批次撤销成功",
               f"已确认批次撤销失败: {resp.status_code}")
-        check(data['data']['revoked_by'] == '接班小张', "撤销人正确记录", "撤销人记录错误")
+        check(data['data']['revoked_by'] == 'receiver_demo', "撤销人正确记录（会话用户）", "撤销人记录错误")
+        check(data['data']['original_confirmer'] == 'receiver_demo', "原确认人保留正确（会话用户）", "原确认人记录错误")
+        check(data['data']['receiver_person_display'] == '接班小张', "接班人显示名称正确记录", "接班人显示名称记录错误")
         check(data['data']['revoke_reason'] == '发现交接错误，需要重新核对', "撤销原因正确记录", "撤销原因记录错误")
         check(data['data']['revoked_at'] is not None, "撤销时间正确记录", "撤销时间记录错误")
+        check(data['data']['revoke_old_status'] == 'confirmed', "撤销前状态正确记录", "撤销前状态记录错误")
+        check(data['data']['revoke_new_status'] == 'pending', "撤销后状态正确记录", "撤销后状态记录错误")
         check(data['data']['receiver_person'] is None, "撤销后接班人已清空", "撤销后接班人未清空")
         check(data['data']['confirmed_at'] is None, "撤销后确认时间已清空", "撤销后确认时间未清空")
 
         print("\n2.2 待确认批次尝试撤销")
         resp = client.post(f'/api/batches/{batch_id}/revoke', json={
-            'receiver_person': '接班小张',
             'reason': '测试撤销'
         })
         check(resp.status_code == 400 and '无需撤销' in resp.get_json().get('error', ''),
@@ -185,7 +185,6 @@ def run_tests():
         check(resp.status_code == 200, "退回批次成功", "退回批次失败")
 
         resp = client.post(f'/api/batches/{batch_id}/revoke', json={
-            'receiver_person': '接班小张',
             'reason': '测试撤销'
         })
         check(resp.status_code == 400 and '不能撤销' in resp.get_json().get('error', ''),
@@ -216,7 +215,6 @@ def run_tests():
         print("\n3.3 尝试撤销原批次，工单 1 已被新批次占用")
         client.post('/api/switch-role', json={'role': 'receiver', 'username': 'receiver_demo'})
         resp = client.post(f'/api/batches/{batch_id}/revoke', json={
-            'receiver_person': '接班小张',
             'reason': '测试工单占用冲突'
         })
         data = resp.get_json()
@@ -237,7 +235,6 @@ def run_tests():
         print("\n3.5 撤销原批次（工单1已被释放），使其回到待确认状态")
         client.post('/api/switch-role', json={'role': 'receiver', 'username': 'receiver_demo'})
         resp = client.post(f'/api/batches/{batch_id}/revoke', json={
-            'receiver_person': '接班小张',
             'reason': '测试工单释放'
         })
         check(resp.status_code == 200, "撤销原批次成功", "撤销原批次失败")
@@ -259,7 +256,6 @@ def run_tests():
         revoke_reason = '发现客户信息有误，需要重新确认-日志测试'
 
         resp = client.post(f'/api/batches/{batch_id}/revoke', json={
-            'receiver_person': '接班小张',
             'reason': revoke_reason
         })
         check(resp.status_code == 200, "撤销批次成功", "撤销批次失败")
@@ -272,7 +268,7 @@ def run_tests():
         revoke_log = next((h for h in history if h['old_status'] == 'confirmed' and h['new_status'] == 'pending' and revoke_reason in (h.get('reason') or '')), None)
         check(revoke_log is not None, "撤销操作日志已记录", "撤销操作日志未记录")
         if revoke_log:
-            check(revoke_log['operator'] == '接班小张', "日志操作人正确", f"日志操作人错误: {revoke_log['operator']}")
+            check(revoke_log['operator'] == 'receiver_demo', "日志操作人正确（会话用户）", f"日志操作人错误: {revoke_log['operator']}")
             check(revoke_log['old_status'] == 'confirmed', "日志旧状态正确", f"日志旧状态错误: {revoke_log['old_status']}")
             check(revoke_log['new_status'] == 'pending', "日志新状态正确", f"日志新状态错误: {revoke_log['new_status']}")
             expected_log_reason = f'撤销已确认的交接批次，原因：{revoke_reason}'
@@ -292,20 +288,32 @@ def run_tests():
         check(target_batch is not None, "导出数据包含目标批次", "导出数据不包含目标批次")
         if target_batch:
             check(target_batch.get('是否已撤销') == '是', "导出包含是否已撤销字段", "导出缺少是否已撤销字段")
-            check(target_batch.get('撤销人') == '接班小张', "导出撤销人正确", "导出撤销人错误")
+            check(target_batch.get('原确认人') == 'receiver_demo', "导出原确认人正确（会话用户）", "导出原确认人错误")
+            check(target_batch.get('接班人显示名') == '接班小张', "导出接班人显示名正确", "导出接班人显示名错误")
+            check(target_batch.get('撤销人') == 'receiver_demo', "导出撤销人正确（会话用户）", "导出撤销人错误")
             check(target_batch.get('撤销时间') != '', "导出撤销时间正确", "导出撤销时间为空")
             check(target_batch.get('撤销原因') == revoke_reason, "导出撤销原因正确", "导出撤销原因错误")
+            check(target_batch.get('撤销前状态') == 'confirmed', "导出撤销前状态正确", "导出撤销前状态错误")
+            check(target_batch.get('撤销后状态') == 'pending', "导出撤销后状态正确", "导出撤销后状态错误")
+            check('关联工单ID' in target_batch, "导出包含关联工单ID字段", "导出缺少关联工单ID字段")
 
         print("\n5.2 CSV 导出包含撤销信息")
         resp = client.get('/api/export/batches?format=csv')
         check(resp.status_code == 200 and 'csv' in resp.content_type, "CSV 导出成功", "CSV 导出失败")
 
         csv_content = resp.data.decode('utf-8-sig')
+        check('接班人显示名' in csv_content, "CSV 包含接班人显示名列", "CSV 缺少接班人显示名列")
+        check('原确认人' in csv_content, "CSV 包含原确认人列", "CSV 缺少原确认人列")
+        check('撤销前状态' in csv_content, "CSV 包含撤销前状态列", "CSV 缺少撤销前状态列")
+        check('撤销后状态' in csv_content, "CSV 包含撤销后状态列", "CSV 缺少撤销后状态列")
+        check('关联工单ID' in csv_content, "CSV 包含关联工单ID列", "CSV 缺少关联工单ID列")
         check('是否已撤销' in csv_content, "CSV 包含是否已撤销列", "CSV 缺少是否已撤销列")
         check('撤销人' in csv_content, "CSV 包含撤销人列", "CSV 缺少撤销人列")
         check('撤销时间' in csv_content, "CSV 包含撤销时间列", "CSV 缺少撤销时间列")
         check('撤销原因' in csv_content, "CSV 包含撤销原因列", "CSV 缺少撤销原因列")
         check(revoke_reason in csv_content, "CSV 包含撤销原因内容", "CSV 缺少撤销原因内容")
+        check('receiver_demo' in csv_content, "CSV 包含原确认人内容", "CSV 缺少原确认人内容")
+        check('接班小张' in csv_content, "CSV 包含接班人显示名内容", "CSV 缺少接班人显示名内容")
 
         print("\n=== 6. 跨重启一致性测试 ===")
 
@@ -315,9 +323,12 @@ def run_tests():
             batch_before = HandoverBatch.query.get(batch_id)
             batch_data_before = {
                 'status': batch_before.status,
+                'original_confirmer': batch_before.original_confirmer,
                 'revoked_at': batch_before.revoked_at.isoformat() if batch_before.revoked_at else None,
                 'revoked_by': batch_before.revoked_by,
                 'revoke_reason': batch_before.revoke_reason,
+                'revoke_old_status': batch_before.revoke_old_status,
+                'revoke_new_status': batch_before.revoke_new_status,
                 'receiver_person': batch_before.receiver_person,
                 'confirmed_at': batch_before.confirmed_at.isoformat() if batch_before.confirmed_at else None,
             }
@@ -340,9 +351,12 @@ def run_tests():
             batch_after = HandoverBatch.query.get(batch_id)
             batch_data_after = {
                 'status': batch_after.status,
+                'original_confirmer': batch_after.original_confirmer,
                 'revoked_at': batch_after.revoked_at.isoformat() if batch_after.revoked_at else None,
                 'revoked_by': batch_after.revoked_by,
                 'revoke_reason': batch_after.revoke_reason,
+                'revoke_old_status': batch_after.revoke_old_status,
+                'revoke_new_status': batch_after.revoke_new_status,
                 'receiver_person': batch_after.receiver_person,
                 'confirmed_at': batch_after.confirmed_at.isoformat() if batch_after.confirmed_at else None,
             }
@@ -350,7 +364,7 @@ def run_tests():
                 entity_type='batch', entity_id=batch_id
             ).count()
 
-        check(batch_data_before == batch_data_after, "重启后批次状态一致", "重启后批次状态不一致")
+        check(batch_data_before == batch_data_after, "重启后批次状态完全一致", "重启后批次状态不一致")
         check(history_count_before == history_count_after, "重启后历史记录数量一致", "重启后历史记录数量不一致")
 
         print("\n6.4 验证重启后API返回状态一致")
@@ -359,8 +373,11 @@ def run_tests():
         check(api_data is not None, "API 获取批次详情成功", "API 获取批次详情失败")
         if api_data:
             check(api_data['status'] == batch_data_before['status'], "API 返回状态正确", "API 返回状态错误")
+            check(api_data['original_confirmer'] == batch_data_before['original_confirmer'], "API 返回原确认人正确", "API 返回原确认人错误")
             check(api_data['revoked_by'] == batch_data_before['revoked_by'], "API 返回撤销人正确", "API 返回撤销人错误")
             check(api_data['revoke_reason'] == batch_data_before['revoke_reason'], "API 返回撤销原因正确", "API 返回撤销原因错误")
+            check(api_data['revoke_old_status'] == batch_data_before['revoke_old_status'], "API 返回撤销前状态正确", "API 返回撤销前状态错误")
+            check(api_data['revoke_new_status'] == batch_data_before['revoke_new_status'], "API 返回撤销后状态正确", "API 返回撤销后状态错误")
 
         print("\n6.5 验证重启后导出结果一致")
         resp = client2.get('/api/export/batches?format=json')

@@ -159,7 +159,6 @@ export default function BatchDetail() {
     try {
       setActionLoading(true);
       const res = await batchApi.revoke(Number(id), {
-        receiver_person: user?.username,
         reason: revokeReason,
       });
       if (res.success) {
@@ -188,7 +187,7 @@ export default function BatchDetail() {
   );
 
   const canRevoke = batch?.status === 'confirmed' &&
-    batch.receiver_person === user?.username &&
+    batch.original_confirmer === user?.username &&
     hasPermission('confirm_batches');
 
   const validateEditForm = (): boolean => {
@@ -336,16 +335,73 @@ export default function BatchDetail() {
         </div>
       )}
 
-      {revokeHistoryItem && (
-        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
-          <div className="flex items-start gap-3">
-            <Undo2 className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+      {batch.revoked_at && (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-6">
+          <div className="flex items-start gap-3 mb-4">
+            <Undo2 className="h-6 w-6 text-yellow-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <h3 className="font-medium text-yellow-800">撤销信息</h3>
-              <p className="mt-1 text-sm text-yellow-700">{revokeHistoryItem.reason || '无'}</p>
-              <p className="mt-1 text-xs text-yellow-600">
-                撤销人: {revokeHistoryItem.operator} • {formatDateTime(revokeHistoryItem.created_at)}
-              </p>
+              <h3 className="font-semibold text-yellow-900 text-lg">撤销复核记录</h3>
+              <p className="text-sm text-yellow-700 mt-1">该批次已执行撤销操作，以下是完整的复核信息</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg bg-white p-4 border border-yellow-100">
+              <div className="text-xs text-yellow-600 font-medium">原确认人</div>
+              <div className="mt-1 text-sm font-medium text-gray-900">{batch.original_confirmer || '-'}</div>
+            </div>
+            <div className="rounded-lg bg-white p-4 border border-yellow-100">
+              <div className="text-xs text-yellow-600 font-medium">撤销执行人</div>
+              <div className="mt-1 text-sm font-medium text-gray-900">{batch.revoked_by || '-'}</div>
+            </div>
+            <div className="rounded-lg bg-white p-4 border border-yellow-100">
+              <div className="text-xs text-yellow-600 font-medium">撤销时间</div>
+              <div className="mt-1 text-sm font-medium text-gray-900">{formatDateTime(batch.revoked_at)}</div>
+            </div>
+            <div className="rounded-lg bg-white p-4 border border-yellow-100">
+              <div className="text-xs text-yellow-600 font-medium">撤销前状态</div>
+              <div className="mt-1">
+                {batch.revoke_old_status && (
+                  <BatchStatusBadge status={batch.revoke_old_status as 'pending' | 'confirmed' | 'returned'} />
+                )}
+              </div>
+            </div>
+            <div className="rounded-lg bg-white p-4 border border-yellow-100">
+              <div className="text-xs text-yellow-600 font-medium">撤销后状态</div>
+              <div className="mt-1">
+                {batch.revoke_new_status && (
+                  <BatchStatusBadge status={batch.revoke_new_status as 'pending' | 'confirmed' | 'returned'} />
+                )}
+              </div>
+            </div>
+            <div className="rounded-lg bg-white p-4 border border-yellow-100">
+              <div className="text-xs text-yellow-600 font-medium">受影响工单数</div>
+              <div className="mt-1 text-sm font-medium text-gray-900">{batch.ticket_ids.length} 个</div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-lg bg-white p-4 border border-yellow-100">
+            <div className="text-xs text-yellow-600 font-medium mb-2">撤销原因</div>
+            <div className="text-sm text-gray-700 whitespace-pre-wrap">{batch.revoke_reason || '未填写'}</div>
+          </div>
+
+          <div className="mt-4 rounded-lg bg-white p-4 border border-yellow-100">
+            <div className="text-xs text-yellow-600 font-medium mb-3">受影响工单列表</div>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {batch.tickets?.map((ticket) => (
+                <div
+                  key={ticket.id}
+                  className="flex items-center justify-between rounded-lg border border-gray-200 p-3 hover:bg-gray-50 cursor-pointer"
+                  onClick={() => navigate(`/tickets/${ticket.id}`)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium text-[#1e3a5f]">#{ticket.id}</span>
+                    <span className="text-gray-900">{ticket.customer_name}</span>
+                    <SeverityBadge severity={ticket.severity} />
+                  </div>
+                  <StatusBadge status={ticket.status} />
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -437,6 +493,12 @@ export default function BatchDetail() {
                   {batch.receiver_person || '-'}
                 </span>
               </div>
+              {batch.original_confirmer && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">原确认人</span>
+                  <span className="font-medium text-yellow-700">{batch.original_confirmer}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-gray-500">工单数量</span>
                 <span className="font-medium text-gray-900">{batch.ticket_ids.length}</span>

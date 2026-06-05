@@ -56,7 +56,7 @@ export const ticketApi = {
 };
 
 export const batchApi = {
-  getList: (params?: { status?: string }) =>
+  getList: (params?: { status?: string; is_revoked?: boolean }) =>
     api.get<ApiResponse<HandoverBatch[]>>('/batches', { params }).then(r => r.data),
 
   get: (id: number) =>
@@ -84,7 +84,7 @@ export const batchApi = {
   resubmit: (id: number) =>
     api.post<ApiResponse<HandoverBatch>>(`/batches/${id}/resubmit`).then(r => r.data),
 
-  revoke: (id: number, data: { receiver_person?: string; reason: string }) =>
+  revoke: (id: number, data: { reason: string }) =>
     api.post<ApiResponse<HandoverBatch>>(`/batches/${id}/revoke`, data).then(r => r.data),
 };
 
@@ -126,11 +126,11 @@ export const exportApi = {
     window.open(url.toString(), '_blank');
   },
 
-  exportBatches: (params?: { format?: string; status?: string }) => {
+  exportBatches: (params?: { format?: string; status?: string; is_revoked?: boolean }) => {
     const url = new URL('/api/export/batches', window.location.origin);
     if (params) {
       Object.entries(params).forEach(([k, v]) => {
-        if (v !== undefined) url.searchParams.append(k, v);
+        if (v !== undefined) url.searchParams.append(k, String(v));
       });
     }
     window.open(url.toString(), '_blank');

@@ -42,11 +42,15 @@ class HandoverBatch(db.Model):
     status = db.Column(db.String(20), nullable=False, default='pending')
     handover_person = db.Column(db.String(100), nullable=False)
     receiver_person = db.Column(db.String(100))
+    receiver_person_display = db.Column(db.String(100))
+    original_confirmer = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     confirmed_at = db.Column(db.DateTime)
     revoked_at = db.Column(db.DateTime)
     revoked_by = db.Column(db.String(100))
     revoke_reason = db.Column(db.Text)
+    revoke_old_status = db.Column(db.String(20))
+    revoke_new_status = db.Column(db.String(20))
 
     tickets = db.relationship('Ticket', secondary='batch_ticket',
                               backref=db.backref('batches', lazy='dynamic'))
@@ -59,11 +63,15 @@ class HandoverBatch(db.Model):
             'status': self.status,
             'handover_person': self.handover_person,
             'receiver_person': self.receiver_person,
+            'receiver_person_display': self.receiver_person_display,
+            'original_confirmer': self.original_confirmer,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'confirmed_at': self.confirmed_at.isoformat() if self.confirmed_at else None,
             'revoked_at': self.revoked_at.isoformat() if self.revoked_at else None,
             'revoked_by': self.revoked_by,
             'revoke_reason': self.revoke_reason,
+            'revoke_old_status': self.revoke_old_status,
+            'revoke_new_status': self.revoke_new_status,
             'ticket_ids': [t.id for t in self.tickets]
         }
 

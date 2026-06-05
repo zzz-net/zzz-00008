@@ -13,6 +13,7 @@ export default function BatchList() {
   const [batches, setBatches] = useState<HandoverBatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<BatchStatus | ''>('');
+  const [isRevokedFilter, setIsRevokedFilter] = useState<boolean | ''>('');
   const navigate = useNavigate();
   const showToast = useToast((state) => state.showToast);
   const hasPermission = useAuthStore((state) => state.hasPermission);
@@ -20,8 +21,10 @@ export default function BatchList() {
   const fetchBatches = async () => {
     try {
       setLoading(true);
-      const params = statusFilter ? { status: statusFilter } : undefined;
-      const res = await batchApi.getList(params);
+      const params: { status?: string; is_revoked?: boolean } = {};
+      if (statusFilter) params.status = statusFilter;
+      if (isRevokedFilter !== '') params.is_revoked = isRevokedFilter;
+      const res = await batchApi.getList(Object.keys(params).length ? params : undefined);
       if (res.success && res.data) {
         setBatches(res.data);
       }
@@ -34,7 +37,7 @@ export default function BatchList() {
 
   useEffect(() => {
     fetchBatches();
-  }, [statusFilter, showToast]);
+  }, [statusFilter, isRevokedFilter, showToast]);
 
   return (
     <div className="space-y-6">
@@ -42,14 +45,22 @@ export default function BatchList() {
         <h1 className="text-2xl font-bold text-[#1e3a5f]">交接批次管理</h1>
         <div className="flex gap-2">
           <button
-            onClick={() => exportApi.exportBatches({ format: 'csv', status: statusFilter || undefined })}
+            onClick={() => exportApi.exportBatches({
+              format: 'csv',
+              status: statusFilter || undefined,
+              is_revoked: isRevokedFilter !== '' ? isRevokedFilter : undefined,
+            })}
             className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <Download className="h-4 w-4" />
             导出 CSV
           </button>
           <button
-            onClick={() => exportApi.exportBatches({ format: 'json', status: statusFilter || undefined })}
+            onClick={() => exportApi.exportBatches({
+              format: 'json',
+              status: statusFilter || undefined,
+              is_revoked: isRevokedFilter !== '' ? isRevokedFilter : undefined,
+            })}
             className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <Download className="h-4 w-4" />
@@ -67,7 +78,7 @@ export default function BatchList() {
         </div>
       </div>
 
-      <div className="flex items-center gap-4 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-gray-200 bg-white p-4">
         <div className="flex items-center gap-2 text-gray-500">
           <Filter className="h-4 w-4" />
           <span className="text-sm font-medium">筛选</span>
@@ -84,9 +95,24 @@ export default function BatchList() {
             </option>
           ))}
         </select>
-        {statusFilter && (
+        <select
+          value={isRevokedFilter === '' ? '' : String(isRevokedFilter)}
+          onChange={(e) => {
+            const val = e.target.value;
+            setIsRevokedFilter(val === '' ? '' : val === 'true');
+          }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
+        >
+          <option value="">全部撤销状态</option>
+          <option value="true">已撤销</option>
+          <option value="false">未撤销</option>
+        </select>
+        {(statusFilter || isRevokedFilter !== '') && (
           <button
-            onClick={() => setStatusFilter('')}
+            onClick={() => {
+              setStatusFilter('');
+              setIsRevokedFilter('');
+            }}
             className="ml-auto rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700"
           >
             清除筛选
@@ -106,8 +132,10 @@ export default function BatchList() {
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ID</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">批次名称</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">状态</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">已撤销</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">交班人</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">接班人</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">原确认人</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">工单数量</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">创建时间</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">操作</th>
@@ -116,21 +144,35 @@ export default function BatchList() {
             <tbody className="divide-y divide-gray-200 bg-white">
               {batches.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan={10} className="px-4 py-12 text-center text-gray-500">
                     暂无批次数据
                   </td>
                 </tr>
               ) : (
                   batches.map((batch) => (
-                    <tr key={batch.id} className="hover:bg-gray-50">
+                    <tr key={batch.id} className={`hover:bg-gray-50 ${batch.revoked_at ? 'bg-yellow-50/30' : ''}`}>
                       <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-[#1e3a5f]">#{batch.id}</td>
                       <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">{batch.name}</td>
                       <td className="whitespace-nowrap px-4 py-4">
                         <BatchStatusBadge status={batch.status} />
                       </td>
+                      <td className="whitespace-nowrap px-4 py-4">
+                        {batch.revoked_at ? (
+                          <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-1 text-xs font-medium text-yellow-800">
+                            已撤销
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-600">
+                            否
+                          </span>
+                        )}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">{batch.handover_person}</td>
                       <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
                         {batch.receiver_person || '-'}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-4 text-sm text-yellow-700">
+                        {batch.original_confirmer || '-'}
                       </td>
                       <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-900">
                         {batch.ticket_ids.length}

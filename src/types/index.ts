@@ -24,13 +24,17 @@ export interface HandoverBatch {
   status: BatchStatus;
   handover_person: string;
   receiver_person: string | null;
+  original_confirmer: string | null;
   created_at: string;
   confirmed_at: string | null;
   revoked_at: string | null;
   revoked_by: string | null;
   revoke_reason: string | null;
+  revoke_old_status: string | null;
+  revoke_new_status: string | null;
   ticket_ids: number[];
   tickets?: Ticket[];
+  affected_tickets?: Ticket[];
 }
 
 export interface StatusHistory {

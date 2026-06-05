@@ -26,7 +26,11 @@ def get_current_permissions():
 @bp.route('', methods=['GET'])
 def list_batches():
     status = request.args.get('status')
-    batches = get_batches(status=status)
+    is_revoked = request.args.get('is_revoked')
+    is_revoked_bool = None
+    if is_revoked is not None:
+        is_revoked_bool = is_revoked.lower() in ('true', '1', 'yes')
+    batches = get_batches(status=status, is_revoked=is_revoked_bool)
     return jsonify({'success': True, 'data': batches})
 
 
@@ -75,7 +79,9 @@ def confirm_batch_route(batch_id):
     if not receiver_person:
         return jsonify({'success': False, 'error': '缺少接班人信息'}), 400
 
-    result, error, status_code = confirm_batch(batch_id, receiver_person, get_current_role())
+    result, error, status_code = confirm_batch(
+        batch_id, receiver_person, get_current_role(), get_current_user()
+    )
     if error:
         return jsonify({'success': False, 'error': error}), status_code
     return jsonify({'success': True, 'data': result}), status_code
@@ -109,17 +115,17 @@ def resubmit_batch_route(batch_id):
 @bp.route('/<int:batch_id>/revoke', methods=['POST'])
 def revoke_batch_route(batch_id):
     data = request.get_json() or {}
-    receiver_person = data.get('receiver_person') or get_current_user()
+    current_user = get_current_user()
     reason = data.get('reason', '')
 
-    if not receiver_person:
-        return jsonify({'success': False, 'error': '缺少撤销人信息'}), 400
+    if not current_user:
+        return jsonify({'success': False, 'error': '未检测到当前登录用户，请先登录'}), 401
 
     if not reason or not reason.strip():
         return jsonify({'success': False, 'error': '请填写撤销原因'}), 400
 
     result, error, status_code = revoke_batch(
-        batch_id, receiver_person, reason, get_current_role()
+        batch_id, current_user, reason, get_current_role()
     )
     if error:
         return jsonify({'success': False, 'error': error}), status_code

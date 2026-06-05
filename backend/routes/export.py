@@ -31,13 +31,18 @@ def batch_to_row(batch):
         '状态': batch.status,
         '交班人': batch.handover_person,
         '接班人': batch.receiver_person or '',
+        '接班人显示名': batch.receiver_person_display or '',
+        '原确认人': batch.original_confirmer or '',
         '工单数量': len(batch.tickets),
         '创建时间': batch.created_at.strftime('%Y-%m-%d %H:%M:%S') if batch.created_at else '',
         '确认时间': batch.confirmed_at.strftime('%Y-%m-%d %H:%M:%S') if batch.confirmed_at else '',
         '是否已撤销': '是' if batch.revoked_at else '否',
         '撤销人': batch.revoked_by or '',
         '撤销时间': batch.revoked_at.strftime('%Y-%m-%d %H:%M:%S') if batch.revoked_at else '',
-        '撤销原因': batch.revoke_reason or ''
+        '撤销原因': batch.revoke_reason or '',
+        '撤销前状态': batch.revoke_old_status or '',
+        '撤销后状态': batch.revoke_new_status or '',
+        '关联工单ID': ','.join([str(t.id) for t in batch.tickets])
     }
 
 
@@ -81,10 +86,17 @@ def export_tickets():
 def export_batches():
     fmt = request.args.get('format', 'csv')
     status = request.args.get('status')
+    is_revoked_str = request.args.get('is_revoked')
 
     query = HandoverBatch.query
     if status:
         query = query.filter(HandoverBatch.status == status)
+    if is_revoked_str is not None:
+        is_revoked = is_revoked_str.lower() == 'true'
+        if is_revoked:
+            query = query.filter(HandoverBatch.revoked_at.isnot(None))
+        else:
+            query = query.filter(HandoverBatch.revoked_at.is_(None))
 
     batches = query.order_by(HandoverBatch.created_at.desc()).all()
     data = [batch_to_row(b) for b in batches]
@@ -97,8 +109,8 @@ def export_batches():
         return response
 
     output = io.StringIO()
-    fieldnames = ['ID', '批次名称', '描述', '状态', '交班人', '接班人', '工单数量', '创建时间', '确认时间',
-                  '是否已撤销', '撤销人', '撤销时间', '撤销原因']
+    fieldnames = ['ID', '批次名称', '描述', '状态', '交班人', '接班人', '接班人显示名', '原确认人', '工单数量', '创建时间', '确认时间',
+                  '是否已撤销', '撤销人', '撤销时间', '撤销原因', '撤销前状态', '撤销后状态', '关联工单ID']
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
     writer.writerows(data)
