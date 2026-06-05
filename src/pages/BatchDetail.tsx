@@ -102,7 +102,7 @@ export default function BatchDetail() {
     }
   };
 
-  const canAction = batch?.status === 'pending' && hasPermission('batch:action');
+  const canAction = batch?.status === 'pending' && (hasPermission('confirm_batches') || hasPermission('return_batches'));
 
   if (loading) {
     return (

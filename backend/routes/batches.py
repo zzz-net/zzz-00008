@@ -7,6 +7,10 @@ from ..services.batch_service import (
 bp = Blueprint('batches', __name__, url_prefix='/api/batches')
 
 
+def get_current_role():
+    return getattr(g, 'current_role', 'cs')
+
+
 def get_current_user():
     return getattr(g, 'current_user', 'cs_demo')
 
@@ -20,10 +24,10 @@ def list_batches():
 
 @bp.route('/<int:batch_id>', methods=['GET'])
 def get_batch(batch_id):
-    result, error = get_batch_detail(batch_id)
+    result, error, status_code = get_batch_detail(batch_id)
     if error:
-        return jsonify({'success': False, 'error': error}), 404
-    return jsonify({'success': True, 'data': result})
+        return jsonify({'success': False, 'error': error}), status_code
+    return jsonify({'success': True, 'data': result}), status_code
 
 
 @bp.route('', methods=['POST'])
@@ -36,10 +40,10 @@ def create_batch_route():
     if not valid:
         return jsonify({'success': False, 'error': error}), 400
 
-    result, error = create_batch(data, get_current_user())
+    result, error, status_code = create_batch(data, get_current_user())
     if error:
         return jsonify({'success': False, 'error': error}), 400
-    return jsonify({'success': True, 'data': result}), 201
+    return jsonify({'success': True, 'data': result}), status_code
 
 
 @bp.route('/<int:batch_id>/confirm', methods=['POST'])
@@ -49,10 +53,10 @@ def confirm_batch_route(batch_id):
     if not receiver_person:
         return jsonify({'success': False, 'error': '缺少接班人信息'}), 400
 
-    result, error = confirm_batch(batch_id, receiver_person)
+    result, error, status_code = confirm_batch(batch_id, receiver_person, get_current_role())
     if error:
-        return jsonify({'success': False, 'error': error}), 400
-    return jsonify({'success': True, 'data': result})
+        return jsonify({'success': False, 'error': error}), status_code
+    return jsonify({'success': True, 'data': result}), status_code
 
 
 @bp.route('/<int:batch_id>/return', methods=['POST'])
@@ -64,7 +68,7 @@ def return_batch_route(batch_id):
     if not receiver_person:
         return jsonify({'success': False, 'error': '缺少退回人信息'}), 400
 
-    result, error = return_batch(batch_id, receiver_person, reason)
+    result, error, status_code = return_batch(batch_id, receiver_person, reason, get_current_role())
     if error:
-        return jsonify({'success': False, 'error': error}), 400
-    return jsonify({'success': True, 'data': result})
+        return jsonify({'success': False, 'error': error}), status_code
+    return jsonify({'success': True, 'data': result}), status_code

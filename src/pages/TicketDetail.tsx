@@ -203,7 +203,7 @@ export default function TicketDetail() {
               <Save className="h-4 w-4" />
               {saving ? '保存中...' : '保存'}
             </button>
-            {hasPermission('ticket:close') && ticket.status !== 'closed' && (
+            {hasPermission('update_progress') && ticket.status !== 'closed' && (
               <button
                 onClick={handleClose}
                 className="flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"

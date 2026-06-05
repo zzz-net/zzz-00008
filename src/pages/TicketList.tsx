@@ -65,7 +65,7 @@ export default function TicketList() {
             <Download className="h-4 w-4" />
             导出 JSON
           </button>
-          {hasPermission('ticket:create') && (
+          {hasPermission('create_tickets') && (
             <button
               onClick={() => navigate('/tickets/create')}
               className="flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#2d4f7c]"
@@ -129,7 +129,7 @@ export default function TicketList() {
                             <Eye className="h-4 w-4" />
                             查看详情
                           </button>
-                          {hasPermission('ticket:update') && (
+                          {hasPermission('update_progress') && (
                             <button
                               onClick={() => navigate(`/tickets/${ticket.id}`)}
                               className="flex items-center gap-1 rounded px-2 py-1 text-sm text-[#1e3a5f] hover:bg-gray-100"
