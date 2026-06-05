@@ -2,7 +2,7 @@ export type Severity = 'low' | 'medium' | 'high' | 'critical';
 export type TicketStatus = 'open' | 'in_progress' | 'closed' | 'overdue';
 export type BatchStatus = 'pending' | 'confirmed' | 'returned';
 export type Role = 'cs' | 'handover' | 'receiver';
-export type EntityType = 'ticket' | 'batch' | 'shift';
+export type EntityType = 'ticket' | 'batch' | 'shift' | 'reminder';
 
 export interface DutyShift {
   id: number;
@@ -131,3 +131,27 @@ export const roleMap: Record<Role, { label: string; color: string }> = {
   handover: { label: '交班人', color: 'bg-amber-100 text-amber-800' },
   receiver: { label: '接班人', color: 'bg-teal-100 text-teal-800' },
 };
+
+export interface ReminderConfirmation {
+  id: number;
+  reminder_id: number;
+  confirmed_by: string;
+  confirmed_at: string;
+}
+
+export interface DutyReminder {
+  id: number;
+  title: string;
+  content: string;
+  shift_id: number | null;
+  shift_name: string | null;
+  shift_duty_person: string | null;
+  shift_date: string | null;
+  effective_start: string;
+  effective_end: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  confirmations: ReminderConfirmation[];
+}

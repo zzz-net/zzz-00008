@@ -11,6 +11,7 @@ from .routes.export import bp as export_bp
 from .routes.auth import bp as auth_bp
 from .routes.dashboard import bp as dashboard_bp
 from .routes.shifts import bp as shifts_bp
+from .routes.reminders import bp as reminders_bp
 
 
 def create_app():
@@ -34,6 +35,7 @@ def create_app():
     app.register_blueprint(export_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(shifts_bp)
+    app.register_blueprint(reminders_bp)
 
     with app.app_context():
         db.create_all()

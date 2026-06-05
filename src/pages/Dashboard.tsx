@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { ClipboardList, Clock, CheckCircle, AlertTriangle, Activity, Package } from 'lucide-react';
-import { dashboardApi } from '@/services/api';
+import { ClipboardList, Clock, CheckCircle, AlertTriangle, Activity, Package, BellRing, CheckCircle2 } from 'lucide-react';
+import { dashboardApi, reminderApi } from '@/services/api';
 import { useToast } from '@/hooks/useToast';
 import StatusBadge from '@/components/StatusBadge';
 import SeverityBadge from '@/components/SeverityBadge';
 import BatchStatusBadge from '@/components/BatchStatusBadge';
 import { formatDateTime, getEntityLabel } from '@/utils/format';
-import type { DashboardStats, TicketStatus, Severity, BatchStatus } from '@/types';
+import { useAuthStore } from '@/store/useAuthStore';
+import type { DashboardStats, TicketStatus, Severity, BatchStatus, DutyReminder } from '@/types';
 
 const statCardConfig: { status: TicketStatus; label: string; icon: typeof ClipboardList; color: string }[] = [
   { status: 'open', label: '待处理', icon: ClipboardList, color: 'text-blue-600' },
@@ -31,24 +32,59 @@ const batchConfig: { status: BatchStatus; label: string }[] = [
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingReminders, setPendingReminders] = useState<DutyReminder[]>([]);
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const showToast = useToast((state) => state.showToast);
+  const canConfirm = useAuthStore((s) => s.hasPermission('confirm_reminders'));
+
+  const fetchStats = async () => {
+    try {
+      const res = await dashboardApi.getStats();
+      if (res.success && res.data) {
+        setStats(res.data);
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '获取统计数据失败', 'error');
+    }
+  };
+
+  const fetchPendingReminders = async () => {
+    try {
+      const res = await reminderApi.getMyPending();
+      if (res.success && res.data) {
+        setPendingReminders(res.data);
+      }
+    } catch (e) {
+      console.error('获取待确认提醒失败', e);
+    }
+  };
 
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setLoading(true);
-        const res = await dashboardApi.getStats();
-        if (res.success && res.data) {
-          setStats(res.data);
-        }
-      } catch (e) {
-        showToast(e instanceof Error ? e.message : '获取统计数据失败', 'error');
-      } finally {
-        setLoading(false);
-      }
+    const fetchAll = async () => {
+      setLoading(true);
+      await Promise.all([fetchStats(), fetchPendingReminders()]);
+      setLoading(false);
     };
-    fetchStats();
+    fetchAll();
   }, [showToast]);
+
+  const handleConfirmReminder = async (reminder: DutyReminder) => {
+    if (!window.confirm(`确定确认提醒「${reminder.title}」吗？`)) return;
+    try {
+      setConfirmingId(reminder.id);
+      const res = await reminderApi.confirm(reminder.id);
+      if (res.success) {
+        showToast('提醒已确认', 'success');
+        setPendingReminders((prev) => prev.filter((r) => r.id !== reminder.id));
+      } else {
+        showToast(res.error || '确认失败', 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '确认失败', 'error');
+    } finally {
+      setConfirmingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -69,6 +105,46 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-[#1e3a5f]">仪表盘</h1>
+
+      {canConfirm && pendingReminders.length > 0 && (
+        <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
+          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-amber-900">
+            <BellRing className="h-5 w-5" />
+            待确认的值班提醒 ({pendingReminders.length})
+          </h2>
+          <div className="space-y-3">
+            {pendingReminders.map((r) => (
+              <div key={r.id} className="rounded-lg border border-amber-200 bg-white p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-medium text-[#1e3a5f]">{r.title}</h3>
+                      {r.shift_name && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                          {r.shift_name}
+                          {r.shift_duty_person && <span>（{r.shift_duty_person}）</span>}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{r.content}</p>
+                    <div className="mt-2 text-xs text-gray-500">
+                      有效期: {formatDateTime(r.effective_start)} ~ {formatDateTime(r.effective_end)}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleConfirmReminder(r)}
+                    disabled={confirmingId === r.id}
+                    className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {confirmingId === r.id ? '确认中...' : '确认提醒'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         {statCardConfig.map(({ status, label, icon: Icon, color }) => (

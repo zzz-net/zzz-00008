@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type {
   Ticket, HandoverBatch, StatusHistory, UserInfo, RoleInfo,
-  DashboardStats, TicketListResponse, ApiResponse, DutyShift
+  DashboardStats, TicketListResponse, ApiResponse, DutyShift, DutyReminder
 } from '../types';
 
 const api = axios.create({
@@ -146,6 +146,16 @@ export const exportApi = {
     }
     window.open(url.toString(), '_blank');
   },
+
+  exportReminders: (params?: { format?: string; date?: string }) => {
+    const url = new URL('/api/reminders/export', window.location.origin);
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined) url.searchParams.append(k, String(v));
+      });
+    }
+    window.open(url.toString(), '_blank');
+  },
 };
 
 export const shiftApi = {
@@ -184,6 +194,56 @@ export const shiftApi = {
     formData.append('file', file);
     return api.post<ApiResponse<{ imported: number; skipped: string[]; total: number }>>(
       '/shifts/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } }
+    ).then(r => r.data);
+  },
+};
+
+export const reminderApi = {
+  getList: (params?: { date?: string; shift_id?: number; is_active?: boolean }) =>
+    api.get<ApiResponse<DutyReminder[]>>('/reminders', { params }).then(r => r.data),
+
+  getMyPending: () =>
+    api.get<ApiResponse<DutyReminder[]>>('/reminders/my-pending').then(r => r.data),
+
+  getForShift: (shiftId: number) =>
+    api.get<ApiResponse<DutyReminder[]>>(`/reminders/for-shift/${shiftId}`).then(r => r.data),
+
+  get: (id: number) =>
+    api.get<ApiResponse<DutyReminder>>(`/reminders/${id}`).then(r => r.data),
+
+  create: (data: {
+    title: string;
+    content: string;
+    shift_id?: number | null;
+    shift_date?: string | null;
+    effective_start: string;
+    effective_end: string;
+    is_active?: boolean;
+  }) => api.post<ApiResponse<DutyReminder>>('/reminders', data).then(r => r.data),
+
+  update: (id: number, data: {
+    title?: string;
+    content?: string;
+    shift_id?: number | null;
+    shift_date?: string | null;
+    effective_start?: string;
+    effective_end?: string;
+    is_active?: boolean;
+  }) => api.put<ApiResponse<DutyReminder>>(`/reminders/${id}`, data).then(r => r.data),
+
+  disable: (id: number) =>
+    api.post<ApiResponse<DutyReminder>>(`/reminders/${id}/disable`).then(r => r.data),
+
+  confirm: (id: number) =>
+    api.post<ApiResponse<{ id: number; confirmed_by: string; confirmed_at: string }>>(
+      `/reminders/${id}/confirm`
+    ).then(r => r.data),
+
+  importCsv: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<ApiResponse<{ imported: number; skipped: string[]; total: number }>>(
+      '/reminders/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } }
     ).then(r => r.data);
   },
 };

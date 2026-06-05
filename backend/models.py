@@ -140,3 +140,64 @@ class StatusHistory(db.Model):
             'reason': self.reason,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+
+
+class DutyReminder(db.Model):
+    __tablename__ = 'duty_reminder'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    title = db.Column(db.String(200), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    shift_id = db.Column(db.Integer, db.ForeignKey('duty_shift.id'), nullable=True)
+    shift_date = db.Column(db.DateTime, nullable=True)
+    effective_start = db.Column(db.DateTime, nullable=False)
+    effective_end = db.Column(db.DateTime, nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.String(100), nullable=False)
+
+    shift = db.relationship('DutyShift', backref=db.backref('reminders', lazy='dynamic'))
+    confirmations = db.relationship(
+        'DutyReminderConfirmation',
+        backref='reminder',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    def to_dict(self, include_confirmations=False):
+        data = {
+            'id': self.id,
+            'title': self.title,
+            'content': self.content,
+            'shift_id': self.shift_id,
+            'shift_name': self.shift.name if self.shift else None,
+            'shift_duty_person': self.shift.duty_person if self.shift else None,
+            'shift_date': self.shift_date.isoformat() if self.shift_date else None,
+            'effective_start': self.effective_start.isoformat() if self.effective_start else None,
+            'effective_end': self.effective_end.isoformat() if self.effective_end else None,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'created_by': self.created_by,
+        }
+        if include_confirmations:
+            data['confirmations'] = [c.to_dict() for c in self.confirmations]
+        return data
+
+
+class DutyReminderConfirmation(db.Model):
+    __tablename__ = 'duty_reminder_confirmation'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    reminder_id = db.Column(db.Integer, db.ForeignKey('duty_reminder.id', ondelete='CASCADE'), nullable=False)
+    confirmed_by = db.Column(db.String(100), nullable=False)
+    confirmed_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'reminder_id': self.reminder_id,
+            'confirmed_by': self.confirmed_by,
+            'confirmed_at': self.confirmed_at.isoformat() if self.confirmed_at else None
+        }

@@ -36,5 +36,18 @@ export function getEntityLabel(entityType: string, entityId: number): string {
   if (entityType === 'ticket') return `升级单 #${entityId}`;
   if (entityType === 'batch') return `交接批次 #${entityId}`;
   if (entityType === 'shift') return `排班班次 #${entityId}`;
+  if (entityType === 'reminder') return `值班提醒 #${entityId}`;
   return `${entityType} #${entityId}`;
+}
+
+export function toLocalInputValue(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function fromLocalInputValue(v: string): string {
+  if (!v) return '';
+  return new Date(v).toISOString();
 }

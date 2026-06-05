@@ -71,3 +71,45 @@ def validate_shift_data(data: dict, for_update: bool = False) -> Tuple[bool, Opt
         return False, '结束时间必须晚于开始时间'
 
     return True, None
+
+
+def validate_reminder_data(data: dict, for_update: bool = False) -> Tuple[bool, Optional[str]]:
+    if not for_update:
+        required_fields = ['title', 'content', 'effective_start', 'effective_end']
+        for field in required_fields:
+            if field not in data or not str(data[field]).strip():
+                return False, f'缺少必填字段: {field}'
+
+    if 'title' in data and not str(data['title']).strip():
+        return False, '提醒标题不能为空'
+
+    if 'content' in data and not str(data['content']).strip():
+        return False, '提醒内容不能为空'
+
+    start_dt = None
+    end_dt = None
+    try:
+        if 'effective_start' in data and data['effective_start']:
+            start_dt = datetime.fromisoformat(str(data['effective_start']).replace('Z', '+00:00'))
+        if 'effective_end' in data and data['effective_end']:
+            end_dt = datetime.fromisoformat(str(data['effective_end']).replace('Z', '+00:00'))
+    except (ValueError, TypeError):
+        return False, '有效时间格式不正确，请使用 ISO 格式 (YYYY-MM-DDTHH:MM:SS)'
+
+    if start_dt and end_dt and end_dt <= start_dt:
+        return False, '结束时间必须晚于开始时间'
+
+    shift_date = None
+    if 'shift_date' in data and data['shift_date']:
+        try:
+            shift_date = datetime.fromisoformat(str(data['shift_date']).replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            return False, '班次日期格式不正确'
+
+    if 'shift_id' in data and data['shift_id'] is not None:
+        try:
+            int(data['shift_id'])
+        except (ValueError, TypeError):
+            return False, '关联班次 ID 格式不正确'
+
+    return True, None

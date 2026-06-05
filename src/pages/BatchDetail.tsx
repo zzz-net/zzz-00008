@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, XCircle, Clock, Edit2, Send, X, Save, CheckSquare, Square, AlertCircle, Undo2 } from 'lucide-react';
-import { batchApi, historyApi, ticketApi } from '@/services/api';
+import { ArrowLeft, CheckCircle, XCircle, Clock, Edit2, Send, X, Save, CheckSquare, Square, AlertCircle, Undo2, BellRing, CheckCircle2 } from 'lucide-react';
+import { batchApi, historyApi, ticketApi, reminderApi } from '@/services/api';
 import { useToast } from '@/hooks/useToast';
 import { useAuthStore } from '@/store/useAuthStore';
 import BatchStatusBadge from '@/components/BatchStatusBadge';
 import SeverityBadge from '@/components/SeverityBadge';
 import StatusBadge from '@/components/StatusBadge';
 import { formatDateTime } from '@/utils/format';
-import type { HandoverBatch, StatusHistory, Ticket } from '@/types';
+import type { HandoverBatch, StatusHistory, Ticket, DutyReminder } from '@/types';
 
 interface EditFormData {
   name: string;
@@ -32,8 +32,11 @@ export default function BatchDetail() {
   const [availableTickets, setAvailableTickets] = useState<Ticket[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [editErrors, setEditErrors] = useState<{ name?: string; ticketIds?: string }>({});
+  const [shiftReminders, setShiftReminders] = useState<DutyReminder[]>([]);
+  const [reminderConfirmingId, setReminderConfirmingId] = useState<number | null>(null);
   const showToast = useToast((state) => state.showToast);
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const canConfirmReminder = useAuthStore((state) => state.hasPermission('confirm_reminders'));
   const user = useAuthStore((state) => state.user);
 
   const fetchBatch = async () => {
@@ -86,9 +89,46 @@ export default function BatchDetail() {
     }
   };
 
+  const fetchShiftReminders = async (shiftId: number) => {
+    try {
+      const res = await reminderApi.getForShift(shiftId);
+      if (res.success && res.data) {
+        setShiftReminders(res.data);
+      }
+    } catch (e) {
+      console.error('获取班次提醒失败', e);
+    }
+  };
+
+  const handleConfirmReminder = async (reminder: DutyReminder) => {
+    if (!window.confirm(`确定确认提醒「${reminder.title}」吗？`)) return;
+    try {
+      setReminderConfirmingId(reminder.id);
+      const res = await reminderApi.confirm(reminder.id);
+      if (res.success) {
+        showToast('提醒已确认', 'success');
+        fetchShiftReminders(reminder.shift_id!);
+      } else {
+        showToast(res.error || '确认失败', 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '确认失败', 'error');
+    } finally {
+      setReminderConfirmingId(null);
+    }
+  };
+
   useEffect(() => {
     fetchBatch();
   }, [id, showToast]);
+
+  useEffect(() => {
+    if (batch?.shift_id) {
+      fetchShiftReminders(batch.shift_id);
+    } else {
+      setShiftReminders([]);
+    }
+  }, [batch?.shift_id]);
 
   useEffect(() => {
     if (isEditing) {
@@ -331,6 +371,59 @@ export default function BatchDetail() {
                 退回人: {returnHistoryItem.operator} • {formatDateTime(returnHistoryItem.created_at)}
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {shiftReminders.length > 0 && (
+        <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 shadow-sm">
+          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-amber-900">
+            <BellRing className="h-5 w-5" />
+            关联班次的值班提醒 ({shiftReminders.length})
+          </h2>
+          <div className="space-y-3">
+            {shiftReminders.map((r) => {
+              const confirmed = r.confirmations?.some(c => c.confirmed_by === user?.name);
+              const expired = new Date(r.effective_end) < new Date();
+              return (
+                <div key={r.id} className="rounded-lg border border-amber-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-medium text-[#1e3a5f]">{r.title}</h3>
+                        {confirmed && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                            <CheckCircle2 className="h-3 w-3" /> 已确认
+                          </span>
+                        )}
+                        {expired && r.is_active && !confirmed && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                            已过期
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-sm text-gray-700 whitespace-pre-wrap">{r.content}</p>
+                      <div className="mt-2 text-xs text-gray-500">
+                        有效期: {formatDateTime(r.effective_start)} ~ {formatDateTime(r.effective_end)}
+                        {r.confirmations && r.confirmations.length > 0 && (
+                          <span className="ml-3">已确认: {r.confirmations.map(c => c.confirmed_by).join('、')}</span>
+                        )}
+                      </div>
+                    </div>
+                    {canConfirmReminder && r.is_active && !expired && !confirmed && (
+                      <button
+                        onClick={() => handleConfirmReminder(r)}
+                        disabled={reminderConfirmingId === r.id}
+                        className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        {reminderConfirmingId === r.id ? '确认中...' : '确认提醒'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
