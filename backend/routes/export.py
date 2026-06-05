@@ -33,7 +33,11 @@ def batch_to_row(batch):
         '接班人': batch.receiver_person or '',
         '工单数量': len(batch.tickets),
         '创建时间': batch.created_at.strftime('%Y-%m-%d %H:%M:%S') if batch.created_at else '',
-        '确认时间': batch.confirmed_at.strftime('%Y-%m-%d %H:%M:%S') if batch.confirmed_at else ''
+        '确认时间': batch.confirmed_at.strftime('%Y-%m-%d %H:%M:%S') if batch.confirmed_at else '',
+        '是否已撤销': '是' if batch.revoked_at else '否',
+        '撤销人': batch.revoked_by or '',
+        '撤销时间': batch.revoked_at.strftime('%Y-%m-%d %H:%M:%S') if batch.revoked_at else '',
+        '撤销原因': batch.revoke_reason or ''
     }
 
 
@@ -93,7 +97,8 @@ def export_batches():
         return response
 
     output = io.StringIO()
-    fieldnames = ['ID', '批次名称', '描述', '状态', '交班人', '接班人', '工单数量', '创建时间', '确认时间']
+    fieldnames = ['ID', '批次名称', '描述', '状态', '交班人', '接班人', '工单数量', '创建时间', '确认时间',
+                  '是否已撤销', '撤销人', '撤销时间', '撤销原因']
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
     writer.writerows(data)

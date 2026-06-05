@@ -153,3 +153,15 @@ def is_ticket_in_pending_batch(ticket_id, exclude_batch_id=None):
         query = query.filter(HandoverBatch.id != exclude_batch_id)
     count = query.count()
     return count > 0
+
+
+def get_batch_using_ticket(ticket_id, exclude_batch_id=None):
+    query = db.session.query(HandoverBatch).join(
+        BatchTicket, BatchTicket.batch_id == HandoverBatch.id
+    ).filter(
+        BatchTicket.ticket_id == ticket_id,
+        HandoverBatch.status == 'pending'
+    )
+    if exclude_batch_id is not None:
+        query = query.filter(HandoverBatch.id != exclude_batch_id)
+    return query.first()

@@ -2,7 +2,7 @@ from datetime import datetime
 from sqlalchemy import and_
 from ..models import db, HandoverBatch, Ticket, BatchTicket
 from .history_service import add_history
-from .ticket_service import is_ticket_in_pending_batch
+from .ticket_service import is_ticket_in_pending_batch, get_batch_using_ticket
 
 
 def get_batches(status=None):
@@ -190,6 +190,55 @@ def return_batch(batch_id, receiver_person, reason, role):
 
     add_history('batch', batch_id, old_status, 'returned', receiver_person,
                 reason or '退回交接批次')
+    db.session.commit()
+
+    result = batch.to_dict()
+    result['tickets'] = [t.to_dict() for t in batch.tickets]
+    return result, None, 200
+
+
+def revoke_batch(batch_id, receiver_person, reason, role):
+    if role != 'receiver':
+        return None, '权限不足：只有接班人角色可以撤销已确认的交接批次', 403
+
+    batch = HandoverBatch.query.get(batch_id)
+    if not batch:
+        return None, '交接批次不存在', 404
+
+    if batch.status == 'pending':
+        return None, '当前批次状态为待确认，无需撤销', 400
+
+    if batch.status == 'returned':
+        return None, '当前批次状态为已退回，不能撤销', 400
+
+    if batch.status != 'confirmed':
+        return None, f'当前批次状态为 {batch.status}，只有已确认的批次可以撤销', 400
+
+    if batch.receiver_person != receiver_person:
+        return None, '权限不足：只能撤销自己作为接班人确认的批次', 403
+
+    ticket_ids = [t.id for t in batch.tickets]
+    occupied_tickets = []
+    for tid in ticket_ids:
+        using_batch = get_batch_using_ticket(tid, exclude_batch_id=batch_id)
+        if using_batch:
+            occupied_tickets.append(
+                f'工单 {tid} 已被新批次「{using_batch.name}」(ID: {using_batch.id}) 占用，不能撤销'
+            )
+
+    if occupied_tickets:
+        return None, '；'.join(occupied_tickets), 409
+
+    old_status = batch.status
+    batch.status = 'pending'
+    batch.receiver_person = None
+    batch.confirmed_at = None
+    batch.revoked_at = datetime.utcnow()
+    batch.revoked_by = receiver_person
+    batch.revoke_reason = reason
+
+    add_history('batch', batch_id, old_status, 'pending', receiver_person,
+                f'撤销已确认的交接批次，原因：{reason or "未填写"}')
     db.session.commit()
 
     result = batch.to_dict()

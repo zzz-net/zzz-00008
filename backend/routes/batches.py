@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, g
 from ..validators import validate_batch_data
 from ..services.batch_service import (
     get_batches, get_batch_detail, create_batch, confirm_batch, return_batch,
-    update_batch, resubmit_batch
+    update_batch, resubmit_batch, revoke_batch
 )
 from ..routes.auth import ROLES
 
@@ -100,6 +100,26 @@ def return_batch_route(batch_id):
 def resubmit_batch_route(batch_id):
     result, error, status_code = resubmit_batch(
         batch_id, get_current_user(), get_current_role(), get_current_permissions()
+    )
+    if error:
+        return jsonify({'success': False, 'error': error}), status_code
+    return jsonify({'success': True, 'data': result}), status_code
+
+
+@bp.route('/<int:batch_id>/revoke', methods=['POST'])
+def revoke_batch_route(batch_id):
+    data = request.get_json() or {}
+    receiver_person = data.get('receiver_person') or get_current_user()
+    reason = data.get('reason', '')
+
+    if not receiver_person:
+        return jsonify({'success': False, 'error': '缺少撤销人信息'}), 400
+
+    if not reason or not reason.strip():
+        return jsonify({'success': False, 'error': '请填写撤销原因'}), 400
+
+    result, error, status_code = revoke_batch(
+        batch_id, receiver_person, reason, get_current_role()
     )
     if error:
         return jsonify({'success': False, 'error': error}), status_code

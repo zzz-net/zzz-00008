@@ -26,6 +26,9 @@ export interface HandoverBatch {
   receiver_person: string | null;
   created_at: string;
   confirmed_at: string | null;
+  revoked_at: string | null;
+  revoked_by: string | null;
+  revoke_reason: string | null;
   ticket_ids: number[];
   tickets?: Ticket[];
 }

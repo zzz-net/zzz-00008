@@ -44,6 +44,9 @@ class HandoverBatch(db.Model):
     receiver_person = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     confirmed_at = db.Column(db.DateTime)
+    revoked_at = db.Column(db.DateTime)
+    revoked_by = db.Column(db.String(100))
+    revoke_reason = db.Column(db.Text)
 
     tickets = db.relationship('Ticket', secondary='batch_ticket',
                               backref=db.backref('batches', lazy='dynamic'))
@@ -58,6 +61,9 @@ class HandoverBatch(db.Model):
             'receiver_person': self.receiver_person,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'confirmed_at': self.confirmed_at.isoformat() if self.confirmed_at else None,
+            'revoked_at': self.revoked_at.isoformat() if self.revoked_at else None,
+            'revoked_by': self.revoked_by,
+            'revoke_reason': self.revoke_reason,
             'ticket_ids': [t.id for t in self.tickets]
         }
 

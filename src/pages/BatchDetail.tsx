@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, XCircle, Clock, Edit2, Send, X, Save, CheckSquare, Square, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Clock, Edit2, Send, X, Save, CheckSquare, Square, AlertCircle, Undo2 } from 'lucide-react';
 import { batchApi, historyApi, ticketApi } from '@/services/api';
 import { useToast } from '@/hooks/useToast';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -25,6 +25,8 @@ export default function BatchDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showReturnReason, setShowReturnReason] = useState(false);
   const [returnReason, setReturnReason] = useState('');
+  const [showRevokeReason, setShowRevokeReason] = useState(false);
+  const [revokeReason, setRevokeReason] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<EditFormData>({ name: '', description: '', ticketIds: [] });
   const [availableTickets, setAvailableTickets] = useState<Ticket[]>([]);
@@ -46,6 +48,8 @@ export default function BatchDetail() {
           description: batchRes.data.description || '',
           ticketIds: batchRes.data.ticket_ids || [],
         });
+        setShowRevokeReason(false);
+        setRevokeReason('');
       }
 
       const historyRes = await historyApi.getList({
@@ -144,6 +148,35 @@ export default function BatchDetail() {
     }
   };
 
+  const handleRevoke = async () => {
+    if (!id || !batch) return;
+    if (!revokeReason.trim()) {
+      showToast('请填写撤销原因', 'warning');
+      return;
+    }
+    if (!window.confirm('确定要撤销该交接批次吗？撤销后状态将恢复为待确认，关联工单将可继续交接。')) return;
+
+    try {
+      setActionLoading(true);
+      const res = await batchApi.revoke(Number(id), {
+        receiver_person: user?.username,
+        reason: revokeReason,
+      });
+      if (res.success) {
+        showToast('交接已撤销', 'success');
+        setShowRevokeReason(false);
+        setRevokeReason('');
+        fetchBatch();
+      } else {
+        showToast(res.error || '撤销失败', 'error');
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : '撤销失败', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const canEdit = batch?.status === 'returned' && (
     (user?.username === batch.handover_person) || hasPermission('create_batches')
   );
@@ -153,6 +186,10 @@ export default function BatchDetail() {
   const canResubmit = batch?.status === 'returned' && (
     (user?.username === batch.handover_person) || hasPermission('create_batches')
   );
+
+  const canRevoke = batch?.status === 'confirmed' &&
+    batch.receiver_person === user?.username &&
+    hasPermission('confirm_batches');
 
   const validateEditForm = (): boolean => {
     const errors: { name?: string; ticketIds?: string } = {};
@@ -249,6 +286,7 @@ export default function BatchDetail() {
   };
 
   const returnHistoryItem = history.find((h) => h.new_status === 'returned');
+  const revokeHistoryItem = history.find((h) => h.old_status === 'confirmed' && h.new_status === 'pending');
   const selectedTickets = availableTickets.filter((t) => editForm.ticketIds.includes(t.id));
 
   if (loading) {
@@ -292,6 +330,21 @@ export default function BatchDetail() {
               <p className="mt-1 text-sm text-red-700">{returnHistoryItem.reason || '无'}</p>
               <p className="mt-1 text-xs text-red-600">
                 退回人: {returnHistoryItem.operator} • {formatDateTime(returnHistoryItem.created_at)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {revokeHistoryItem && (
+        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4">
+          <div className="flex items-start gap-3">
+            <Undo2 className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="font-medium text-yellow-800">撤销信息</h3>
+              <p className="mt-1 text-sm text-yellow-700">{revokeHistoryItem.reason || '无'}</p>
+              <p className="mt-1 text-xs text-yellow-600">
+                撤销人: {revokeHistoryItem.operator} • {formatDateTime(revokeHistoryItem.created_at)}
               </p>
             </div>
           </div>
@@ -398,52 +451,110 @@ export default function BatchDetail() {
                   <span className="font-medium text-gray-500">{formatDateTime(batch.confirmed_at)}</span>
                 </div>
               )}
+              {batch.revoked_at && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">撤销时间</span>
+                    <span className="font-medium text-yellow-600">{formatDateTime(batch.revoked_at)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">撤销人</span>
+                    <span className="font-medium text-yellow-600">{batch.revoked_by}</span>
+                  </div>
+                  {batch.revoke_reason && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">撤销原因</span>
+                      <span className="font-medium text-yellow-600">{batch.revoke_reason}</span>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             {canAction && (
-              <div className="pt-4 border-t border-gray-200 space-y-3">
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleConfirm}
-                    disabled={actionLoading}
-                    className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                  >
-                    <CheckCircle className="h-4 w-4" />
-                    确认交接
-                  </button>
-                  <button
-                    onClick={() => setShowReturnReason(!showReturnReason)}
-                    disabled={actionLoading}
-                    className="flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    <XCircle className="h-4 w-4" />
-                    退回交接
-                  </button>
-                </div>
-
-                {showReturnReason && (
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">
-                      退回原因 <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={returnReason}
-                      onChange={(e) => setReturnReason(e.target.value)}
-                      rows={3}
-                      className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
-                      placeholder="请输入退回原因"
-                    />
+                <div className="pt-4 border-t border-gray-200 space-y-3">
+                  <div className="flex gap-2">
                     <button
-                      onClick={handleReturn}
-                      disabled={actionLoading || !returnReason.trim()}
-                      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                      onClick={handleConfirm}
+                      disabled={actionLoading}
+                      className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
                     >
-                      {actionLoading ? '提交中...' : '提交退回'}
+                      <CheckCircle className="h-4 w-4" />
+                      确认交接
+                    </button>
+                    <button
+                      onClick={() => setShowReturnReason(!showReturnReason)}
+                      disabled={actionLoading}
+                      className="flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      退回交接
                     </button>
                   </div>
-                )}
-              </div>
-            )}
+
+                  {showReturnReason && (
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        退回原因 <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={returnReason}
+                        onChange={(e) => setReturnReason(e.target.value)}
+                        rows={3}
+                        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
+                        placeholder="请输入退回原因"
+                      />
+                      <button
+                        onClick={handleReturn}
+                        disabled={actionLoading || !returnReason.trim()}
+                        className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {actionLoading ? '提交中...' : '提交退回'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {canRevoke && (
+                <div className="pt-4 border-t border-gray-200 space-y-3">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowRevokeReason(!showRevokeReason)}
+                      disabled={actionLoading}
+                      className="flex items-center gap-2 rounded-lg border border-yellow-500 bg-white px-4 py-2 text-sm font-medium text-yellow-700 hover:bg-yellow-50 disabled:opacity-50"
+                    >
+                      <Undo2 className="h-4 w-4" />
+                      撤销确认
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    撤销后批次状态将恢复为待确认，关联工单将可继续交接。此操作只能由您作为接班人执行。
+                  </p>
+
+                  {showRevokeReason && (
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        撤销原因 <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={revokeReason}
+                        onChange={(e) => setRevokeReason(e.target.value)}
+                        rows={3}
+                        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
+                        placeholder="请输入撤销原因，说明交接错误的具体情况"
+                      />
+                      <button
+                        onClick={handleRevoke}
+                        disabled={actionLoading || !revokeReason.trim()}
+                        className="rounded-lg bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50"
+                      >
+                        {actionLoading ? '提交中...' : '确认撤销'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
             {canEdit && !isEditing && (
               <div className="pt-4 border-t border-gray-200 space-y-3">

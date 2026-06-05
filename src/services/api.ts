@@ -83,6 +83,9 @@ export const batchApi = {
 
   resubmit: (id: number) =>
     api.post<ApiResponse<HandoverBatch>>(`/batches/${id}/resubmit`).then(r => r.data),
+
+  revoke: (id: number, data: { receiver_person?: string; reason: string }) =>
+    api.post<ApiResponse<HandoverBatch>>(`/batches/${id}/revoke`, data).then(r => r.data),
 };
 
 export const historyApi = {
